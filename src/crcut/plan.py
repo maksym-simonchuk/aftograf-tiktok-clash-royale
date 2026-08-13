@@ -742,9 +742,32 @@ ADLIBS = {
     ],
 }
 
+# researched 2026-08: 4 game tags + 2 discovery, ordered specific -> broad.
+# ru spelling "клешроаль" is what CR clippers actually type, not the correct one
 HASHTAGS = {
-    "ru": ["#clashroyale", "#клешрояль", "#клэшрояль", "#рекомендации", "#рек", "#игры"],
-    "en": ["#clashroyale", "#clash", "#royale", "#gaming", "#fyp", "#clutch"],
+    "ru": ["#клешроаль", "#клеш", "#эдит", "#clashroyale", "#рек", "#fyp"],
+    "en": ["#clashroyale", "#clashtok", "#cardevolution", "#clashroyalemoments",
+           "#gaming", "#fyp"],
+}
+
+# the second line of the post: the title hooks, this one tells what is inside
+DESCRIPTIONS = {
+    "ru": [
+        "Лучшие моменты матча подряд — досмотри до последнего 👀",
+        "Три пуша за 20 секунд, финал решает всё 🏆",
+        "Клатч за клатчем, без воды ⚡",
+        "Вот так выигрываются матчи в Клеш Рояль 👑",
+        "Смотри, что бывает в доп. время 🔥",
+        "Сохрани, если тоже так хочешь научиться 📌",
+    ],
+    "en": [
+        "Best moments of the match back to back -- watch till the last one 👀",
+        "Three pushes in 20 seconds, the finale decides it all 🏆",
+        "Clutch after clutch, no filler ⚡",
+        "This is how you win in Clash Royale 👑",
+        "See what overtime does to people 🔥",
+        "Save this if you want to learn the move 📌",
+    ],
 }
 
 
@@ -752,6 +775,13 @@ def title_for(lang: str, seed: str) -> str:
     pool = TITLES.get(lang, TITLES["ru"])
     idx = int(hashlib.sha1(seed.encode()).hexdigest(), 16) % len(pool)
     return pool[idx]
+
+
+def desc_for(lang: str, seed: str, idx: int = 0) -> str:
+    """Rotate through the pool: clips uploaded as one batch must not share a line."""
+    pool = DESCRIPTIONS.get(lang, DESCRIPTIONS["ru"])
+    off = int(hashlib.sha1(seed.encode()).hexdigest(), 16) % len(pool)
+    return pool[(off + idx) % len(pool)]
 
 
 def hashtags_for(lang: str) -> list[str]:

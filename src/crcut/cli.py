@@ -16,7 +16,7 @@ from . import voice as vo
 from .detect import Analysis, DetectConfig, analyze
 from .media import MediaError, Meta, cache_path, find_videos, probe
 from .music import BEDS, BPM, beat_grid, ensure_bed
-from .plan import VARIANT_SCALE, EditPlan, PlanConfig, build_plan, detect_beats
+from .plan import VARIANT_SCALE, EditPlan, PlanConfig, build_plan, desc_for, detect_beats
 from .render import load_metas, render_group
 
 MUSIC_EXT = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
 
     metas = load_metas(plan.sources)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    for group in plan.groups:
+    for idx, group in enumerate(plan.groups):
         target = _output_path(out_dir, plan, group, stamp)
         print(f"rendering {group.name} -> {target}  ({group.out_duration:.1f}s)")
         try:
@@ -54,7 +54,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 1
         target.with_suffix(".txt").write_text(
-            group.title + "\n\n" + " ".join(group.hashtags) + "\n", encoding="utf-8"
+            group.title + "\n"
+            + desc_for(plan.lang, "|".join(plan.sources), idx) + "\n\n"
+            + " ".join(group.hashtags) + "\n",
+            encoding="utf-8",
         )
 
     print(f"done -> {out_dir}")
