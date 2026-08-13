@@ -1,0 +1,17 @@
+inbox/
+out/
+.crcut/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+tests/fixtures/out/
+assets/music/*
+assets/sfx/*
+assets/memes/*
+assets/fonts/*
+!assets/**/.gitkeep
+.omc/state/
+.omc/project-memory.json
