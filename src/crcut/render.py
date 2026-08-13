@@ -236,21 +236,14 @@ def _overlay_stickers(graph: list[str], last: str, stickers: list[Sticker], firs
 
 
 def _sfx_cues(group: Group, cache_dir: Path) -> list[tuple[Path, float]]:
-    """An impact on every moment and a whoosh on every cut.
+    """An impact on every moment. Cuts get nothing -- the cross-fade is enough.
 
-    Files in assets/sfx/ replace the impacts, cycling in name order; the whoosh
-    belongs to the transition rather than to the action, so it is always ours.
+    Files in assets/sfx/ replace the impact, cycling in name order.
     """
     files = sorted(p for p in SFX_DIR.glob("*") if p.suffix.lower() in SFX_SUFFIXES)
     files = files or [sx.impact(cache_dir)]
     hits = [start for seg, start in group.timeline() if seg.kind in ("hit", "hook")]
-    cues = [(files[i % len(files)], max(start, 0.0)) for i, start in enumerate(hits)]
-
-    swish = sx.whoosh(cache_dir)
-    # starts just before the overlap, so the swish carries into the new shot
-    cues += [(swish, max(start - 0.12, 0.0))
-             for seg, start in group.timeline() if seg.trans_in > 0]
-    return cues
+    return [(files[i % len(files)], max(start, 0.0)) for i, start in enumerate(hits)]
 
 
 def _voice_cues(

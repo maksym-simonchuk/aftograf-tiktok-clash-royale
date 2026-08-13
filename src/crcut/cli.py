@@ -14,7 +14,7 @@ import numpy as np
 from . import voice as vo
 from .detect import Analysis, DetectConfig, analyze
 from .media import MediaError, Meta, cache_path, find_videos, probe
-from .music import BPM, beat_grid, ensure_bed
+from .music import BEDS, BPM, beat_grid, ensure_bed
 from .plan import VARIANT_SCALE, EditPlan, PlanConfig, build_plan, detect_beats
 from .render import load_metas, render_group
 
@@ -199,10 +199,14 @@ def _resolve_music(args, root: Path, duration: float) -> tuple[list[Path], list[
     if tracks:
         return tracks, detect_beats(tracks[0])
 
-    # nothing dropped in: play the synthesised bed, whose beats are exact by
-    # construction. Long enough for the longest variant, so it never has to loop.
+    # nothing dropped in: play the synthesised beds, whose beats are exact by
+    # construction. Long enough for the longest variant, so they never have to loop,
+    # and one per variant so three files in a row do not sound like one.
     longest = duration * max(VARIANT_SCALE)
-    return [ensure_bed(root / ".crcut" / f"bed_{int(BPM)}bpm.wav", longest)], beat_grid(longest)
+    wanted = min(len(BEDS), max(args.variants, 1))
+    beds = [ensure_bed(root / ".crcut" / f"bed_{BEDS[i].name}_{int(BPM)}bpm.wav", longest, i)
+            for i in range(wanted)]
+    return beds, beat_grid(longest)
 
 
 def _resolve_voice(args) -> str | None:
