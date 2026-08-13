@@ -89,7 +89,7 @@ def test_sfx_are_mixed_in_when_the_folder_has_any(fake_cr, tmp_path, monkeypatch
     assert ffprobe_json(out, "a:0")["streams"][0]["codec_name"] == "aac"
 
 
-def test_impacts_are_synthesised_when_the_folder_is_empty(fake_cr, tmp_path, monkeypatch):
+def test_no_sound_layer_at_all_when_the_folder_is_empty(fake_cr, tmp_path, monkeypatch):
     monkeypatch.setattr(render, "SFX_DIR", tmp_path / "nothing-here")
 
     video, _ = fake_cr
@@ -98,11 +98,10 @@ def test_impacts_are_synthesised_when_the_folder_is_empty(fake_cr, tmp_path, mon
                  debug_dir=tmp_path / "debug", metas=load_metas(plan.sources))
 
     graph = (tmp_path / "debug" / f"filtergraph_{plan.groups[0].name}.txt").read_text()
-    segments = plan.groups[0].segments
-    hits = sum(s.kind in ("hit", "hook") for s in segments)
-    assert hits
-    # cuts get no cue of their own: the whoosh was unpleasant and was removed
-    assert graph.count("atrim=0:1.6") == hits
+    assert sum(s.kind in ("hit", "hook") for s in plan.groups[0].segments)
+    # nothing is synthesised: the moments are also the cuts, and a cue on every
+    # scene change is what was unpleasant
+    assert "adelay" not in graph
 
 
 def test_only_the_captions_marked_for_narration_are_spoken(fake_cr, tmp_path):

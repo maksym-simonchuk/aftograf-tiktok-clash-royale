@@ -142,6 +142,18 @@ def test_each_variant_snaps_to_the_grid_of_its_own_track():
         assert max(min(abs(c - b) for b in beats) for c in cuts) < 0.05
 
 
+def test_a_slow_track_still_gets_every_cut_on_a_beat():
+    # 89 bpm: beats 0.674s apart, so a cut can sit 0.337s from the nearest one --
+    # further than the fixed 0.30s window, which is how real tracks fell off the grid
+    beats = [round(i * 0.674, 3) for i in range(300)]
+    plan = build_plan([make_analysis("a", 180.0, [30.0, 75.0, 120.0])],
+                      PlanConfig(target_duration=40.0, variants=1),
+                      tracks=[Path("slow.mp3")], grids=[beats])
+
+    cuts = [start + seg.out_duration for seg, start in plan.groups[0].timeline()[:-1]]
+    assert max(min(abs(c - b) for b in beats) for c in cuts) < 0.05
+
+
 def test_lang_flag_switches_copy():
     analyses = [make_analysis("a", 180.0, [30.0, 75.0, 120.0])]
     ru = build_plan(analyses, PlanConfig(lang="ru")).groups[0]

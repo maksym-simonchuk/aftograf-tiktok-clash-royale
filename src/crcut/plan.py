@@ -458,13 +458,18 @@ def _snapped(segments: list[Segment], beats: list[float] | None, cfg: PlanConfig
         return segments
 
     arr = np.asarray(beats, dtype=np.float64)
+    # a fixed window cannot always reach the grid: at 89 bpm the beats are 0.67s
+    # apart, so a cut may sit 0.34s from the nearest one and 0.30s of tolerance
+    # never closes it. Half a beat always reaches, and never pulls further.
+    period = float(np.median(np.diff(arr))) if len(arr) > 1 else 0.0
+    snap = max(cfg.beat_snap, period / 2)
     out_t = 0.0
     for seg in segments:
         out_t -= seg.trans_in
         desired = out_t + seg.out_duration
         nearest = float(arr[int(np.argmin(np.abs(arr - desired)))])
         new_len = nearest - out_t
-        if abs(nearest - desired) <= cfg.beat_snap and new_len >= cfg.min_segment:
+        if abs(nearest - desired) <= snap and new_len >= cfg.min_segment:
             delta = (new_len - seg.out_duration) * seg.speed
             if seg.kind == "tail":
                 seg.end += delta

@@ -70,7 +70,9 @@ STYLES = {
         "equalizer=f=1400:t=q:w=1.6:g=6,equalizer=f=400:t=q:w=1.2:g=-4,"  # nose
         "acompressor=threshold=0.05:ratio=8,"  # shouting, not talking
         "aexciter=amount=3:blend=2,acrusher=bits=7:mode=log:aa=1,"  # the rasp itself
-        "crystalizer=i=2,volume=2.4,alimiter=limit=0.95"
+        # peak, not loudness: the grit is transient-heavy, and at grandpa's gain it
+        # pushed the final mix flat against the limiter
+        "crystalizer=i=1,volume=1.8,alimiter=limit=0.95"
     )),
     # the voice as macOS made it, only levelled -- no shifting, so no artefacts
     "clean": Style(165, 1.0, (

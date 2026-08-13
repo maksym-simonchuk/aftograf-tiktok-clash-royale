@@ -10,7 +10,6 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import sfx as sx
 from . import voice as vo
 from .media import FFMPEG, MediaError, Meta, probe
 from .overlay import find_font, render_caption
@@ -24,6 +23,7 @@ FONT_DIR = Path("assets/fonts")
 MEME_DIR = Path("assets/memes")
 SFX_DIR = Path("assets/sfx")
 SFX_SUFFIXES = (".wav", ".mp3", ".m4a", ".aac", ".ogg")
+FMT = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
 
 
 @dataclass(frozen=True)
@@ -57,7 +57,7 @@ def render_group(
     music = group.music or plan.music  # a variant may carry its own track
     cache_dir = out_path.parent / ".cache"
     stickers = _stickers(plan, group, cache_dir)
-    sfx = _sfx_cues(group, cache_dir)
+    sfx = _sfx_cues(group)
     voice = _voice_cues(group, plan.voice, plan.voice_style, cache_dir)
     sticker_index = len(inputs) + (1 if music else 0)
 
@@ -82,7 +82,10 @@ def render_group(
         debug_dir.mkdir(parents=True, exist_ok=True)
         (debug_dir / f"filtergraph_{group.name}.txt").write_text(filtergraph.replace(";", ";\n"))
 
-    cmd = [FFMPEG, "-v", "error", "-stats", "-nostdin", "-y"]
+    # lanczos everywhere swscale runs -- that includes zoompan, which rescales every
+    # punched-in frame and is otherwise the softest thing in the chain
+    cmd = [FFMPEG, "-v", "error", "-stats", "-nostdin", "-y",
+           "-sws_flags", "lanczos+accurate_rnd+full_chroma_int"]
     for src in inputs:
         cmd += ["-i", src]
     if music:
@@ -93,10 +96,14 @@ def render_group(
         cmd += ["-i", str(path)]
 
     cmd += ["-filter_complex", filtergraph, "-map", "[vout]"]
-    cmd += ["-map", "[aout]", "-c:a", "aac", "-b:a", "192k"] if has_audio else ["-an"]
+    cmd += ["-map", "[aout]", "-c:a", "aac", "-b:a", "256k", "-ar", "48000"] if has_audio \
+        else ["-an"]
     cmd += [
-        "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
-        "-pix_fmt", "yuv420p", "-profile:v", "high",
+        # crf 16 / medium: TikTok re-encodes whatever it gets, so the master has to
+        # survive a second generation -- that is worth the extra minute per variant
+        "-c:v", "libx264", "-crf", "16", "-preset", "medium",
+        "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.2",
+        "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         "-r", str(plan.fps), "-t", str(total),
         "-movflags", "+faststart", str(out_path),
     ]
@@ -131,8 +138,11 @@ def _video_graph(
             f"[{idx}:v]trim=start={seg.start:.3f}:end={seg.end:.3f},"
             f"setpts=(PTS-STARTPTS)/{seg.speed:.3f},fps={fps}"
         )
+        # yuv444p all the way to the end: captions and stickers are overlaid after
+        # this, and blending them into half-resolution chroma is what frays the
+        # coloured edges of the text. The 4:2:0 conversion happens once, at [vout].
         # settb last, after zoompan -- xfade refuses inputs whose timebases disagree
-        tail = f"{_punch(seg, plan)},format=yuv420p,settb=AVTB[v{i}]"
+        tail = f"{_punch(seg, plan)},format=yuv444p,settb=AVTB[v{i}]"
         if pillarbox:
             graph.append(base + f",split=2[f{i}s][b{i}s]")
             graph.append(
@@ -235,13 +245,16 @@ def _overlay_stickers(graph: list[str], last: str, stickers: list[Sticker], firs
     return last
 
 
-def _sfx_cues(group: Group, cache_dir: Path) -> list[tuple[Path, float]]:
-    """An impact on every moment. Cuts get nothing -- the cross-fade is enough.
+def _sfx_cues(group: Group) -> list[tuple[Path, float]]:
+    """Whatever is in assets/sfx/, on every moment, cycling in name order.
 
-    Files in assets/sfx/ replace the impact, cycling in name order.
+    Nothing is synthesised: the moments coincide with the cuts, so a generated cue
+    landed on every scene change and that is exactly what was unpleasant. An empty
+    folder means no sound layer at all -- the zoom and the cross-fade carry the hit.
     """
     files = sorted(p for p in SFX_DIR.glob("*") if p.suffix.lower() in SFX_SUFFIXES)
-    files = files or [sx.impact(cache_dir)]
+    if not files:
+        return []
     hits = [start for seg, start in group.timeline() if seg.kind in ("hit", "hook")]
     return [(files[i % len(files)], max(start, 0.0)) for i, start in enumerate(hits)]
 
@@ -276,43 +289,78 @@ def _audio_graph(
     voice: list[tuple[Path, float]],
     voice_index: int,
 ) -> bool:
-    """Music bed, impacts and the narrator. Returns whether there is an [aout] to map."""
-    labels: list[str] = []
-    if music:
-        fade_out = max(0.0, total - 0.8)
-        # the bed steps back when someone is talking over it
-        level = 0.55 if voice else 0.9
-        graph.append(
-            f"[{music_index}:a]atrim=0:{total:.3f},asetpts=PTS-STARTPTS,"
-            f"afade=t=in:st=0:d=0.25,afade=t=out:st={fade_out:.3f}:d=0.8,volume={level}[bed]"
-        )
-        labels.append("bed")
+    """Music, whatever is in assets/sfx/, and the narrator. True if there is an [aout].
 
+    Everything is resampled to 48k stereo float on the way in: sidechaincompress
+    refuses inputs whose formats disagree, and one conversion at the front is cleaner
+    than several scattered through the graph.
+    """
+    labels: list[str] = []
     for i, (_path, start) in enumerate(sfx):
-        ms = int(start * 1000)
         graph.append(
-            f"[{sfx_index + i}:a]atrim=0:1.6,asetpts=PTS-STARTPTS,"
-            f"adelay={ms}:all=1,volume=1.1[s{i}]"
+            f"[{sfx_index + i}:a]{FMT},atrim=0:1.6,asetpts=PTS-STARTPTS,"
+            f"adelay={int(start * 1000)}:all=1,volume=1.1[s{i}]"
         )
         labels.append(f"s{i}")
 
     for i, (_path, start) in enumerate(voice):
-        ms = int(start * 1000)
         graph.append(
-            f"[{voice_index + i}:a]asetpts=PTS-STARTPTS,adelay={ms}:all=1,volume=1.7[n{i}]"
+            f"[{voice_index + i}:a]{FMT},asetpts=PTS-STARTPTS,"
+            f"adelay={int(start * 1000)}:all=1,volume=1.7[n{i}]"
         )
-        labels.append(f"n{i}")
+
+    if voice:
+        labels.append(_voice_bus(graph, len(voice), total, key=bool(music)))
+
+    if music:
+        fade_out = max(0.0, total - 0.8)
+        graph.append(
+            f"[{music_index}:a]{FMT},atrim=0:{total:.3f},asetpts=PTS-STARTPTS,"
+            f"afade=t=in:st=0:d=0.25,afade=t=out:st={fade_out:.3f}:d=0.8,volume=0.9[bed]"
+        )
+        if voice:
+            # ducking on the actual voice rather than a fixed -5 dB for the whole
+            # video: the music stays at full level between lines and gets out of the
+            # way only while he is talking
+            graph.append(
+                "[bed][key]sidechaincompress=threshold=0.03:ratio=8:"
+                "attack=15:release=350:makeup=1:level_sc=2[duck]"
+            )
+            labels.append("duck")
+        else:
+            labels.append("bed")
 
     if not labels:
         return False
 
     mix = "".join(f"[{lbl}]" for lbl in labels)
     if len(labels) > 1:
-        mix += f"amix=inputs={len(labels)}:duration=first:normalize=0,alimiter=limit=0.95,"
+        # longest, not first: the first bus is whichever layer exists, and an SFX cue
+        # ends 1.6s after its hit -- with `first` it would cut the whole mix there
+        mix += f"amix=inputs={len(labels)}:duration=longest:normalize=0,"
     graph.append(
-        f"{mix}atrim=0:{total:.3f},apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]"
+        f"{mix}alimiter=limit=0.95,"
+        # one loudness target for every variant, so a 28s cut and a 55s cut do not
+        # arrive at different volumes; loudnorm outputs 192k, hence the resample after
+        f"loudnorm=I=-14:TP=-1.5:LRA=11,"
+        # soxr is not in every ffmpeg build; a wider swr kernel is available everywhere
+        f"aresample=48000:filter_size=64:cutoff=0.97,"
+        f"atrim=0:{total:.3f},apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]"
     )
     return True
+
+
+def _voice_bus(graph: list[str], cues: int, total: float, key: bool) -> str:
+    """One narrator bus; with music it is split in two, the second copy keying the duck.
+
+    Split rather than reused: a filtergraph label may only be consumed once -- and only
+    when it is wanted, because an unconnected asplit output is a hard ffmpeg error.
+    """
+    heads = "".join(f"[n{i}]" for i in range(cues))
+    summed = f"{heads}amix=inputs={cues}:duration=longest:normalize=0," if cues > 1 else heads
+    tail = ",asplit=2[vox][key]" if key else "[vox]"
+    graph.append(f"{summed}apad,atrim=0:{total:.3f},asetpts=PTS-STARTPTS{tail}")
+    return "vox"
 
 
 def load_metas(paths: list[str]) -> dict[str, Meta]:
