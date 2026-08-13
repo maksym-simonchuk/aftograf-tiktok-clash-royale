@@ -200,14 +200,23 @@ def _resolve_music(
             raise ValueError(f"music file not found: {path}")
         return [path], [detect_beats(path)]
 
+    fav_folder = root / "assets" / "music" / "fav"
+    favs = sorted(p for p in fav_folder.iterdir() if p.suffix.lower() in MUSIC_EXT) \
+        if fav_folder.is_dir() else []
+
     folder = root / "assets" / "music"
     tracks = sorted(p for p in folder.iterdir() if p.suffix.lower() in MUSIC_EXT) \
         if folder.is_dir() else []
-    if tracks:
-        # the library is bigger than one run needs, so start somewhere else each time
-        # the inbox changes -- otherwise tracks 1-3 would be the only ones ever heard
-        off = int(hashlib.sha1(seed.encode()).hexdigest()[:8], 16) % len(tracks)
-        picked = [tracks[(off + i) % len(tracks)] for i in range(min(wanted, len(tracks)))]
+    if favs or tracks:
+        # the loved track goes first in every batch; the rotating pool only tops up
+        # whatever slots favorites don't already fill
+        picked = favs[:wanted]
+        remaining = wanted - len(picked)
+        if remaining > 0 and tracks:
+            # the library is bigger than one run needs, so start somewhere else each time
+            # the inbox changes -- otherwise tracks 1-3 would be the only ones ever heard
+            off = int(hashlib.sha1(seed.encode()).hexdigest()[:8], 16) % len(tracks)
+            picked += [tracks[(off + i) % len(tracks)] for i in range(min(remaining, len(tracks)))]
         return picked, [detect_beats(p) for p in picked]
 
     # nothing dropped in: play the synthesised beds, whose beats are exact by

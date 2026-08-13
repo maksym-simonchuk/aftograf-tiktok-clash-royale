@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from crcut import cli
 from crcut import render
 from crcut import voice as vo
 from crcut.detect import analyze
@@ -104,7 +106,29 @@ def test_no_sound_layer_at_all_when_the_folder_is_empty(fake_cr, tmp_path, monke
     assert "adelay" not in graph
 
 
-def test_only_the_captions_marked_for_narration_are_spoken(fake_cr, tmp_path):
+def test_favorite_tracks_are_picked_before_the_rotating_pool(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "detect_beats", lambda p: [0.5, 1.0])
+
+    music = tmp_path / "assets" / "music"
+    fav = music / "fav"
+    fav.mkdir(parents=True)
+    (fav / "loved.mp3").touch()
+    for name in ("a.mp3", "b.mp3", "c.mp3"):
+        (music / name).touch()
+
+    args = argparse.Namespace(no_music=False, music=None)
+    tracks, grids = cli._resolve_music(args, tmp_path, duration=10.0, wanted=3, seed="batch")
+
+    assert tracks[0] == fav / "loved.mp3"
+    assert set(tracks[1:]) <= set(music.glob("*.mp3"))
+    assert len(tracks) == len(set(tracks)) == 3
+    assert grids == [[0.5, 1.0]] * 3
+
+
+def test_only_the_captions_marked_for_narration_are_spoken(fake_cr, tmp_path, monkeypatch):
+    # forces the say backend: this test renders for real and must stay offline,
+    # while edge-tts (installed) would otherwise become vo.pick's first choice
+    monkeypatch.setattr(vo, "_EDGE_OK", False)
     if not vo.available() or not vo.pick("ru"):
         pytest.skip("no system TTS")
 
