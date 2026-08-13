@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -31,6 +32,7 @@ class PlanConfig:
     post: float = 2.0
     clip_pre: float = 8.0
     clip_post: float = 4.0
+    clip_max: float = 20.0  # a clip never runs longer -- TikTok's short-attention cut
     # speed ramps
     lead_speed: float = 1.35
     hit_speed: float = 0.55
@@ -206,7 +208,8 @@ def build_windows(analyses: list[Analysis], cfg: PlanConfig) -> list[Window]:
                 continue
             raw.append(Window(src=src, start=start, end=end, peak=peak, score=0.0))
 
-        for w in _merge_windows(raw):
+        split = _split_windows(raw) if cfg.mode == "clips" else _merge_windows(raw)
+        for w in split:
             w.score = _score(w, an, limit)
             windows.append(w)
 
@@ -220,6 +223,30 @@ def _merge_windows(windows: list[Window]) -> list[Window]:
             prev = out[-1]
             prev.end = max(prev.end, w.end)
             prev.peak = w.peak
+        else:
+            out.append(w)
+    return out
+
+
+def _split_windows(windows: list[Window], min_gap: float = 5.0) -> list[Window]:
+    """Every moment keeps its own clip: neighbours split halfway instead of merging.
+
+    Merging is right for a montage (one long cut, the last peak carries the merged
+    window) but wrong for clips -- six highlights chained by overlap collapsed into
+    one file and five moments vanished. Only peaks close enough to be the same
+    moment (a double tower crash) still merge.
+    """
+    out: list[Window] = []
+    for w in sorted(windows, key=lambda x: x.peak):
+        if out and w.peak - out[-1].peak < min_gap:
+            prev = out[-1]
+            prev.end = max(prev.end, w.end)
+            prev.peak = w.peak
+        elif out and w.start < out[-1].end:
+            mid = round((out[-1].peak + w.peak) / 2, 3)
+            out[-1].end = mid
+            w.start = mid
+            out.append(w)
         else:
             out.append(w)
     return out
@@ -242,9 +269,13 @@ def _score(w: Window, an: Analysis, limit: float) -> float:
 
 def segments_for(w: Window, cfg: PlanConfig) -> list[Segment]:
     lead_speed = cfg.lead_speed if cfg.mode == "montage" else 1.25
+    # a clip is the whole story of one push, so its lead reaches back the full
+    # window; in a montage the lead is capped so a merged window does not become
+    # one long unedited shot
+    max_lead = cfg.max_lead * lead_speed if cfg.mode == "montage" else cfg.clip_pre
     hit_start = max(w.start, w.peak - cfg.hit_pre)
     hit_end = min(w.end, w.peak + cfg.hit_post)
-    lead_start = max(w.start, hit_start - cfg.max_lead * lead_speed)
+    lead_start = max(w.start, hit_start - max_lead)
 
     out: list[Segment] = []
     if hit_start - lead_start >= cfg.min_segment:
@@ -288,16 +319,30 @@ def build_plan(
     cursor = 0  # walks the caption pool across groups, so no line is reused in one run
     ad_cursor = 0
     if cfg.mode == "clips":
-        for i, w in enumerate(ranked):
-            title = title_for(cfg.lang, seed + str(i))
-            segments = _decorate(segments_for(w, cfg), title, cfg,
-                                 caption_from=cursor, adlib_from=ad_cursor)
-            cursor += _captions_used(segments)
-            ad_cursor += _adlibs_used(segments)
-            groups.append(
-                Group(f"clip_{i:02d}", title, hashtags_for(cfg.lang),
-                      _snapped(segments, grid_of(i), cfg), music_of(i))
-            )
+        # per source and chronological, not by score: the output is one folder per
+        # match, uploaded a folder at a time, so clips must read in match order
+        i, stems = 0, set()
+        for src, path in enumerate(sources):
+            stem = re.sub(r"[^\w-]+", "_", Path(path).stem) or f"src{src}"
+            if stem in stems:  # two inputs with one stem would overwrite each other
+                stem = f"{stem}_{src}"
+            stems.add(stem)
+            for k, w in enumerate(sorted((w for w in windows if w.src == src),
+                                         key=lambda w: w.peak), start=1):
+                title = title_for(cfg.lang, f"{seed}#{stem}#{k}")
+                segments = _decorate(segments_for(w, cfg), title, cfg,
+                                     caption_from=cursor, adlib_from=ad_cursor)
+                cursor += _captions_used(segments)
+                ad_cursor += _adlibs_used(segments)
+                # snap first, cap second: the cap is a promise ("до 20 секунд"),
+                # and the shot it may shorten ends the clip, where nothing is cut
+                # to the beat anyway -- the music just fades out
+                segments = _snapped(segments, grid_of(i), cfg)
+                segments = _trim_to_target(segments, cfg.clip_max, cfg.min_segment,
+                                           slack=0.0)
+                groups.append(Group(f"{stem}_{k:02d}", title, hashtags_for(cfg.lang),
+                                    segments, music_of(i)))
+                i += 1
     else:
         # several ready-to-post cuts, not one: different cold open, length and
         # copy, so there is something to pick between without re-running anything
@@ -437,12 +482,16 @@ def _out_total(segments: list[Segment]) -> float:
     return sum(s.out_duration - s.trans_in for s in segments)
 
 
-def _trim_to_target(segments: list[Segment], target: float, min_segment: float) -> list[Segment]:
+def _trim_to_target(
+    segments: list[Segment], target: float, min_segment: float, slack: float = 1.5
+) -> list[Segment]:
+    """`slack` is how far past `target` is tolerable: a montage length is a taste,
+    a clip length is a promise."""
     # epsilon, not 0: a room of ~1e-17 leaves out_duration unchanged after the
     # subtraction and the loop never converges
     eps = 1e-3
     overshoot = _out_total(segments) - target
-    while overshoot > 1.5 and len(segments) > 1:
+    while overshoot > slack + eps and len(segments) > 1:
         last = segments[-1]
         room = last.out_duration - min_segment
         if room <= eps:

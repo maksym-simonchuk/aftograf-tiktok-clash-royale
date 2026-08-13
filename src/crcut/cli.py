@@ -91,7 +91,10 @@ def _load_or_build_plan(args, root: Path, out_dir: Path, debug_dir: Path | None)
             _write_debug(an, debug_dir)
 
     seed = "|".join(sorted(v.name for v in videos))
-    tracks, grids = _resolve_music(args, root, args.duration, args.variants, seed)
+    # clips: a track per clip, so a run of 18 uploads does not sound like one song
+    wanted = args.variants if args.mode == "montage" \
+        else sum(len(a.highlights) for a in analyses)
+    tracks, grids = _resolve_music(args, root, args.duration, wanted, seed)
     for t, g in zip(tracks, grids):
         print(f"music: {t.name} ({len(g)} beats)")
 
@@ -230,7 +233,10 @@ def _resolve_voice(args) -> str | None:
 
 def _output_path(out_dir: Path, plan: EditPlan, group, stamp: str) -> Path:
     if plan.mode == "clips":
-        return out_dir / "clips" / f"{group.name}.mp4"
+        # one folder per source video, so a match's clips upload as one batch;
+        # the filename keeps the match name and stays legible after upload
+        src = plan.sources[group.segments[0].src]
+        return out_dir / "clips" / Path(src).stem / f"{group.name}.mp4"
     return out_dir / f"{group.name}_{stamp}.mp4"
 
 
@@ -238,7 +244,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="crcut", description="Clash Royale -> TikTok auto-editor")
     p.add_argument("folder", nargs="?", default="inbox", help="folder with match recordings")
     p.add_argument("--clips", dest="mode", action="store_const", const="clips", default="montage",
-                   help="render one file per highlight instead of a single montage")
+                   help="short clips (max 20s), one per highlight, one folder per match")
     p.add_argument("--montage", dest="mode", action="store_const", const="montage")
     p.add_argument("--duration", type=float, default=42.0, help="target montage duration, seconds")
     p.add_argument("--variants", type=int, default=3,

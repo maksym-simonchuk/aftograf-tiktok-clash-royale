@@ -97,9 +97,45 @@ def test_clips_mode_yields_one_group_per_highlight():
     analyses = [make_analysis("a", 90.0, [20.0, 45.0, 70.0])]
     plan = build_plan(analyses, PlanConfig(mode="clips"))
 
-    assert len(plan.groups) == 3
+    assert [g.name for g in plan.groups] == ["a_01", "a_02", "a_03"]
     for group in plan.groups:
-        assert 10.0 <= group.out_duration <= 25.0
+        assert 8.0 <= group.out_duration <= 20.0
+
+
+def test_clips_never_run_past_the_cap_even_snapped_to_a_slow_grid():
+    # merged windows make the longest clips; the slow grid stretches cuts outward,
+    # so the cap has to hold after snapping, not before
+    analyses = [make_analysis("a", 240.0, [30.0, 36.0, 90.0, 96.0, 150.0])]
+    beats = [round(i * 0.674, 3) for i in range(400)]  # 89 bpm
+    plan = build_plan(analyses, PlanConfig(mode="clips"),
+                      tracks=[Path("slow.mp3")], grids=[beats])
+
+    assert plan.groups
+    for group in plan.groups:
+        assert group.out_duration <= 20.0 + 1e-3
+
+
+def test_chained_highlights_do_not_collapse_into_one_clip():
+    # 10s apart: windows overlap (+-8/4) and chain-merged into a single clip,
+    # losing five moments of six; same-moment peaks (3s) still merge
+    analyses = [make_analysis("a", 120.0, [20.0, 30.0, 40.0, 50.0, 60.0, 63.0])]
+    plan = build_plan(analyses, PlanConfig(mode="clips"))
+
+    assert len(plan.groups) == 5
+    peaks = [g.segments[-1].start for g in plan.groups]
+    assert peaks == sorted(peaks)
+
+
+def test_clips_are_split_per_match_and_chronological():
+    analyses = [make_analysis("МАТЧ 1", 120.0, [60.0, 30.0, 90.0]),
+                make_analysis("b", 90.0, [40.0])]
+    plan = build_plan(analyses, PlanConfig(mode="clips"))
+
+    assert [g.name for g in plan.groups] == ["МАТЧ_1_01", "МАТЧ_1_02", "МАТЧ_1_03", "b_01"]
+    for group in plan.groups:
+        assert len({seg.src for seg in group.segments}) == 1  # a clip is one match
+    starts = [g.segments[0].start for g in plan.groups[:3]]
+    assert starts == sorted(starts)
 
 
 def test_no_highlights_is_a_clear_error():
