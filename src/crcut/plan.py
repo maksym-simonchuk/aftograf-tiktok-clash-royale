@@ -60,6 +60,7 @@ class Segment:
     trans_in: float = 0.0  # cross-fade overlap with the previous shot, 0 = hard cut
     trans_kind: str = ""
     caption: str = ""
+    narrate: bool = False  # is that caption also read out loud, or only drawn
     adlib: str = ""  # spoken only -- the narrator's reaction, never drawn on screen
 
     @property
@@ -136,6 +137,7 @@ class EditPlan:
                             "trans_in": round(s.trans_in, 3),
                             "trans_kind": s.trans_kind,
                             "caption": s.caption,
+                            "narrate": s.narrate,
                             "adlib": s.adlib,
                         }
                         for s in g.segments
@@ -257,9 +259,23 @@ def segments_for(w: Window, cfg: PlanConfig) -> list[Segment]:
 def build_plan(
     analyses: list[Analysis],
     cfg: PlanConfig,
-    music: Path | None = None,
-    beats: list[float] | None = None,
+    tracks: list[Path] | None = None,
+    grids: list[list[float]] | None = None,
 ) -> EditPlan:
+    """`tracks` rotate over the groups and each group snaps to its own grid in `grids`.
+
+    A montage is three variants over three different songs, and a cut is only on the
+    beat of the song it is actually playing over -- one shared grid would put two of
+    the three variants off it.
+    """
+    tracks, grids = tracks or [], grids or []
+
+    def music_of(i: int) -> str | None:
+        return str(tracks[i % len(tracks)]) if tracks else None
+
+    def grid_of(i: int) -> list[float] | None:
+        return grids[i % len(grids)] if grids else None
+
     sources = [a.meta.path for a in analyses]
     windows = build_windows(analyses, cfg)
     if not windows:
@@ -279,7 +295,8 @@ def build_plan(
             cursor += _captions_used(segments)
             ad_cursor += _adlibs_used(segments)
             groups.append(
-                Group(f"clip_{i:02d}", title, hashtags_for(cfg.lang), _snapped(segments, beats, cfg))
+                Group(f"clip_{i:02d}", title, hashtags_for(cfg.lang),
+                      _snapped(segments, grid_of(i), cfg), music_of(i))
             )
     else:
         # several ready-to-post cuts, not one: different cold open, length and
@@ -295,7 +312,7 @@ def build_plan(
             ad_cursor += _adlibs_used(segments)
             groups.append(
                 Group(f"montage_v{v + 1}", title, hashtags_for(cfg.lang),
-                      _snapped(segments, beats, cfg))
+                      _snapped(segments, grid_of(v), cfg), music_of(v))
             )
 
     return EditPlan(
@@ -305,7 +322,7 @@ def build_plan(
         width=cfg.width,
         height=cfg.height,
         fps=cfg.fps,
-        music=str(music) if music else None,
+        music=music_of(0),
         voice=cfg.voice,
         voice_style=cfg.voice_style,
         sources=sources,
@@ -356,8 +373,10 @@ def _assign_captions(
     for i, seg in enumerate(segments):
         if i == 0:  # the hook in a montage, the opening shot in a clip
             seg.caption = plain_text(title)
+            seg.narrate = True  # the opening line always gets read: it sets the voice up
         elif seg.kind == "hit":
             seg.caption = pool[(start + shown) % len(pool)]
+            seg.narrate = shown % 2 == 0  # the rest are read every other time
             shown += 1
     return segments
 
@@ -371,7 +390,7 @@ def _assign_adlibs(segments: list[Segment], cfg: PlanConfig, start: int = 0) -> 
     pool = ADLIBS.get(cfg.lang, ADLIBS["ru"])
     used = 0
     for i, seg in enumerate(s for s in segments if s.kind == "tail"):
-        if i % 2:  # every other tail, or the narrator never shuts up
+        if i % 3:  # every third tail -- more often than that and he never shuts up
             continue
         seg.adlib = pool[(start + used) % len(pool)]
         used += 1
@@ -570,40 +589,40 @@ CAPTIONS = {
 # Short: they land on the tail of a moment and must be over before the next one.
 ADLIBS = {
     "ru": [
-        "Ох ты ж.",
-        "Ай-ай-ай.",
-        "Ну ты даёшь.",
-        "Куда собрался?",
-        "Вот это дед понимает.",
-        "Ну-ну.",
-        "В моё время так не умели.",
-        "Тьфу ты.",
-        "Спокойно, я всё видел.",
-        "Ох, батюшки.",
-        "Молодец, внучек.",
-        "Ну всё, финиш.",
-        "Я даже привстал.",
-        "Не смотри, там страшно.",
-        "Вот так вот, да.",
-        "Ай, красиво.",
+        "Ох ты ж!",
+        "Ай-ай-ай...",
+        "Ну ты даёшь!",
+        "Э, куда собрался?!",
+        "Во! Вот это дед понимает!",
+        "Ну-ну... ну-ну.",
+        "В моё время так не умели!",
+        "Тьфу ты, ну!",
+        "Спокойно. Я всё видел.",
+        "Ох, батюшки-и...",
+        "Молодец, внучек!",
+        "Ну всё. Финиш.",
+        "Я аж привстал!",
+        "Не смотри... там страшно.",
+        "Вот так вот, да!",
+        "Ай, красиво-о!",
     ],
     "en": [
-        "Oh boy.",
-        "Well well.",
-        "Easy now.",
-        "Where do you think you are going?",
-        "Back in my day.",
-        "Oh dear.",
-        "Not bad, kid.",
-        "Goodness me.",
-        "That is all folks.",
-        "I did warn him.",
-        "Hoo boy.",
-        "Watch him go.",
-        "I nearly stood up.",
-        "Do not look, it is scary.",
-        "There we go.",
-        "Oh that is nice.",
+        "Oh boy!",
+        "Well, well...",
+        "Easy now!",
+        "Hey! Where do you think you are going?!",
+        "Back in my day...",
+        "Oh dear-r...",
+        "Not bad, kid!",
+        "Goodness me!",
+        "That is all, folks.",
+        "I did warn him!",
+        "Hoo boy...",
+        "Watch him go!",
+        "I nearly stood up!",
+        "Do not look... it is scary.",
+        "There we go!",
+        "Oh, that is nice-e!",
     ],
 }
 

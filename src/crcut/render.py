@@ -249,12 +249,16 @@ def _sfx_cues(group: Group, cache_dir: Path) -> list[tuple[Path, float]]:
 def _voice_cues(
     group: Group, voice: str | None, style: str, cache_dir: Path
 ) -> list[tuple[Path, float]]:
-    """The captions read out as they appear, plus the reactions between them."""
+    """The captions marked for narration, plus the reactions between them.
+
+    Not every caption is read: the plan decides which, so the old man comments on
+    the video instead of dictating it.
+    """
     if not voice or not vo.available():
         return []
     cues = []
     for seg, start in group.timeline():
-        if seg.caption:
+        if seg.caption and seg.narrate:
             cues.append((vo.speak(seg.caption, voice, cache_dir, style), max(start, 0.0)))
         if seg.adlib:
             # a beat into the shot, so the reaction follows the moment it reacts to

@@ -105,7 +105,7 @@ def test_impacts_are_synthesised_when_the_folder_is_empty(fake_cr, tmp_path, mon
     assert graph.count("atrim=0:1.6") == hits
 
 
-def test_every_caption_gets_a_narration_line(fake_cr, tmp_path):
+def test_only_the_captions_marked_for_narration_are_spoken(fake_cr, tmp_path):
     if not vo.available() or not vo.pick("ru"):
         pytest.skip("no system TTS")
 
@@ -117,8 +117,10 @@ def test_every_caption_gets_a_narration_line(fake_cr, tmp_path):
 
     graph = (tmp_path / "debug" / f"filtergraph_{plan.groups[0].name}.txt").read_text()
     segments = plan.groups[0].segments
-    spoken = sum(bool(s.caption) for s in segments) + sum(bool(s.adlib) for s in segments)
+    spoken = sum(bool(s.caption and s.narrate) for s in segments) + sum(bool(s.adlib) for s in segments)
     assert graph.count("volume=1.7") == spoken
+    # the point of the flag: some captions are drawn without being read out
+    assert spoken < sum(bool(s.caption) for s in segments) + sum(bool(s.adlib) for s in segments)
     assert ffprobe_json(out, "a:0")["streams"][0]["codec_name"] == "aac"
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -89,10 +90,10 @@ def _load_or_build_plan(args, root: Path, out_dir: Path, debug_dir: Path | None)
         if debug_dir:
             _write_debug(an, debug_dir)
 
-    tracks, beats = _resolve_music(args, root, args.duration)
-    if tracks:
-        names = ", ".join(t.name for t in tracks[:3])
-        print(f"music: {names} ({len(beats)} beats)" if beats else f"music: {names}")
+    seed = "|".join(sorted(v.name for v in videos))
+    tracks, grids = _resolve_music(args, root, args.duration, args.variants, seed)
+    for t, g in zip(tracks, grids):
+        print(f"music: {t.name} ({len(g)} beats)")
 
     voice = _resolve_voice(args)
     if voice:
@@ -100,10 +101,7 @@ def _load_or_build_plan(args, root: Path, out_dir: Path, debug_dir: Path | None)
 
     cfg = PlanConfig(mode=args.mode, lang=args.lang, target_duration=args.duration,
                      variants=args.variants, voice=voice, voice_style=args.voice_style)
-    plan = build_plan(analyses, cfg, music=tracks[0] if tracks else None, beats=beats)
-    if len(tracks) > 1:  # a different track per variant when there is a choice
-        for i, group in enumerate(plan.groups):
-            group.music = str(tracks[i % len(tracks)])
+    plan = build_plan(analyses, cfg, tracks=tracks, grids=grids)
     plan.dump(out_dir / "plan.json")
     print(f"plan -> {out_dir / 'plan.json'}")
     return plan
@@ -183,30 +181,36 @@ def _print_summary(plan: EditPlan) -> None:
 # ---------------------------------------------------------------- helpers
 
 
-def _resolve_music(args, root: Path, duration: float) -> tuple[list[Path], list[float]]:
-    """Tracks to rotate through, plus the beat grid of the first one."""
+def _resolve_music(
+    args, root: Path, duration: float, wanted: int, seed: str = ""
+) -> tuple[list[Path], list[list[float]]]:
+    """One track per variant, each with its own beat grid."""
+    wanted = max(wanted, 1)
     if args.no_music:
         return [], []
     if args.music:
         path = Path(args.music).expanduser()
         if not path.exists():
             raise ValueError(f"music file not found: {path}")
-        return [path], detect_beats(path)
+        return [path], [detect_beats(path)]
 
     folder = root / "assets" / "music"
     tracks = sorted(p for p in folder.iterdir() if p.suffix.lower() in MUSIC_EXT) \
         if folder.is_dir() else []
     if tracks:
-        return tracks, detect_beats(tracks[0])
+        # the library is bigger than one run needs, so start somewhere else each time
+        # the inbox changes -- otherwise tracks 1-3 would be the only ones ever heard
+        off = int(hashlib.sha1(seed.encode()).hexdigest()[:8], 16) % len(tracks)
+        picked = [tracks[(off + i) % len(tracks)] for i in range(min(wanted, len(tracks)))]
+        return picked, [detect_beats(p) for p in picked]
 
     # nothing dropped in: play the synthesised beds, whose beats are exact by
     # construction. Long enough for the longest variant, so they never have to loop,
     # and one per variant so three files in a row do not sound like one.
     longest = duration * max(VARIANT_SCALE)
-    wanted = min(len(BEDS), max(args.variants, 1))
     beds = [ensure_bed(root / ".crcut" / f"bed_{BEDS[i].name}_{int(BPM)}bpm.wav", longest, i)
-            for i in range(wanted)]
-    return beds, beat_grid(longest)
+            for i in range(min(wanted, len(BEDS)))]
+    return beds, [beat_grid(longest)] * len(beds)
 
 
 def _resolve_voice(args) -> str | None:
@@ -240,7 +244,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--variants", type=int, default=3,
                    help="how many montage cuts to render (different hook, length and copy)")
     p.add_argument("--lang", choices=["ru", "en"], default="ru", help="language of titles/captions")
-    p.add_argument("--music", help="music track (default: first file in assets/music/)")
+    p.add_argument("--music", help="one track for every variant (default: rotate assets/music/)")
     p.add_argument("--no-music", action="store_true", help="render silent (add sound in the TikTok app)")
     p.add_argument("--voice", help="system voice that reads the captions (see --voices)")
     p.add_argument("--voice-style", choices=sorted(vo.STYLES), default=vo.DEFAULT_STYLE,

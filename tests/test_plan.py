@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -118,13 +120,26 @@ def test_multiple_sources_are_indexed_and_ordered():
 def test_beat_snapping_moves_cuts_onto_beats():
     analyses = [make_analysis("a", 180.0, [30.0, 75.0, 120.0])]
     beats = [round(i * 0.5, 3) for i in range(200)]
-    plan = build_plan(analyses, PlanConfig(target_duration=40.0), beats=beats)
+    plan = build_plan(analyses, PlanConfig(target_duration=40.0), grids=[beats])
 
     offsets = []
     for seg, start in plan.groups[0].timeline()[:-1]:
         cut = start + seg.out_duration
         offsets.append(min(abs(cut - b) for b in beats))
     assert max(offsets) < 0.05
+
+
+def test_each_variant_snaps_to_the_grid_of_its_own_track():
+    analyses = [make_analysis("a", 180.0, [30.0, 75.0, 120.0])]
+    grids = [[round(i * 0.5, 3) for i in range(400)],  # 120 bpm
+             [round(i * 0.4, 3) for i in range(500)]]  # 150 bpm, off the other grid
+    plan = build_plan(analyses, PlanConfig(target_duration=40.0, variants=2),
+                      tracks=[Path("a.mp3"), Path("b.mp3")], grids=grids)
+
+    assert [g.music for g in plan.groups] == ["a.mp3", "b.mp3"]
+    for group, beats in zip(plan.groups, grids):
+        cuts = [start + seg.out_duration for seg, start in group.timeline()[:-1]]
+        assert max(min(abs(c - b) for b in beats) for c in cuts) < 0.05
 
 
 def test_lang_flag_switches_copy():
