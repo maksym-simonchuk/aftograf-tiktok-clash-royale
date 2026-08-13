@@ -93,13 +93,22 @@ def test_plan_is_deterministic():
     assert first == second
 
 
-def test_clips_mode_yields_one_group_per_highlight():
+def test_a_clip_bundles_up_to_three_events():
     analyses = [make_analysis("a", 90.0, [20.0, 45.0, 70.0])]
     plan = build_plan(analyses, PlanConfig(mode="clips"))
 
-    assert [g.name for g in plan.groups] == ["a_01", "a_02", "a_03"]
-    for group in plan.groups:
-        assert 8.0 <= group.out_duration <= 20.0
+    assert [g.name for g in plan.groups] == ["a_01"]
+    assert sum(s.kind == "hit" for s in plan.groups[0].segments) == 3
+    assert 8.0 <= plan.groups[0].out_duration <= 20.0
+
+
+def test_four_events_split_into_balanced_pairs():
+    # 2+2, not 3+1: a lone trailing one-event clip reads as a leftover
+    analyses = [make_analysis("a", 200.0, [20.0, 60.0, 100.0, 140.0])]
+    plan = build_plan(analyses, PlanConfig(mode="clips"))
+
+    hits = [sum(s.kind == "hit" for s in g.segments) for g in plan.groups]
+    assert hits == [2, 2]
 
 
 def test_clips_never_run_past_the_cap_even_snapped_to_a_slow_grid():
@@ -115,27 +124,58 @@ def test_clips_never_run_past_the_cap_even_snapped_to_a_slow_grid():
         assert group.out_duration <= 20.0 + 1e-3
 
 
-def test_chained_highlights_do_not_collapse_into_one_clip():
-    # 10s apart: windows overlap (+-8/4) and chain-merged into a single clip,
-    # losing five moments of six; same-moment peaks (3s) still merge
+def test_chained_highlights_keep_every_moment():
+    # 10s apart: windows overlap (+-8/4) and chain-merged into a single window,
+    # losing five moments of six; same-moment peaks (3s) still merge. Five
+    # surviving windows then bundle 3+2 into two clips
     analyses = [make_analysis("a", 120.0, [20.0, 30.0, 40.0, 50.0, 60.0, 63.0])]
     plan = build_plan(analyses, PlanConfig(mode="clips"))
 
-    assert len(plan.groups) == 5
-    peaks = [g.segments[-1].start for g in plan.groups]
-    assert peaks == sorted(peaks)
+    assert [sum(s.kind == "hit" for s in g.segments) for g in plan.groups] == [3, 2]
+    starts = [s.start for g in plan.groups for s in g.segments]
+    assert starts == sorted(starts)
 
 
 def test_clips_are_split_per_match_and_chronological():
-    analyses = [make_analysis("МАТЧ 1", 120.0, [60.0, 30.0, 90.0]),
+    analyses = [make_analysis("МАТЧ 1", 200.0, [60.0, 30.0, 90.0, 120.0, 150.0]),
                 make_analysis("b", 90.0, [40.0])]
     plan = build_plan(analyses, PlanConfig(mode="clips"))
 
-    assert [g.name for g in plan.groups] == ["МАТЧ_1_01", "МАТЧ_1_02", "МАТЧ_1_03", "b_01"]
+    assert [g.name for g in plan.groups] == ["МАТЧ_1_01", "МАТЧ_1_02", "b_01"]
     for group in plan.groups:
         assert len({seg.src for seg in group.segments}) == 1  # a clip is one match
-    starts = [g.segments[0].start for g in plan.groups[:3]]
-    assert starts == sorted(starts)
+        starts = [s.start for s in group.segments]
+        assert starts == sorted(starts)
+    assert plan.groups[0].segments[-1].end <= plan.groups[1].segments[0].start
+
+
+def test_a_sparse_grid_never_costs_a_highlight_its_hit():
+    # period 4.0s: the snap window is half of that, wide enough that the trim
+    # used to pop the last event's hit and leave a clip ending on a dangling lead
+    analyses = [make_analysis("a", 240.0, [30.0, 36.0, 90.0, 96.0, 150.0])]
+    beats = [round(i * 4.0, 3) for i in range(200)]
+    plan = build_plan(analyses, PlanConfig(mode="clips"),
+                      tracks=[Path("slow.mp3")], grids=[beats])
+
+    assert [sum(s.kind == "hit" for s in g.segments) for g in plan.groups] == [3, 2]
+    for group in plan.groups:
+        assert group.segments[-1].kind != "lead"
+        assert group.out_duration <= 20.0 + 1e-3
+
+
+def test_snapping_never_rewinds_across_events_in_one_clip():
+    # a stretched tail of one event used to cross into the next event's lead:
+    # the rendered clip visibly jumped backwards between two moments
+    analyses = [make_analysis(
+        "a", 130.0, [31.08, 59.83, 60.77, 69.18, 110.94, 116.34, 116.41])]
+    beats = [round(i * 0.5809, 3) for i in range(300)]  # 103.3 bpm
+    plan = build_plan(analyses, PlanConfig(mode="clips"),
+                      tracks=[Path("t.mp3")], grids=[beats])
+
+    for group in plan.groups:
+        for prev, seg in zip(group.segments, group.segments[1:]):
+            if seg.kind == "lead" and seg.src == prev.src:
+                assert seg.start >= prev.end - 1e-6
 
 
 def test_no_highlights_is_a_clear_error():

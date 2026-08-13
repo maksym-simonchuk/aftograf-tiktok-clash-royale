@@ -33,6 +33,7 @@ class PlanConfig:
     clip_pre: float = 8.0
     clip_post: float = 4.0
     clip_max: float = 20.0  # a clip never runs longer -- TikTok's short-attention cut
+    clip_events: int = 3  # a clip bundles up to this many pushes: 2-3 read as a story
     # speed ramps
     lead_speed: float = 1.35
     hit_speed: float = 0.55
@@ -267,14 +268,21 @@ def _score(w: Window, an: Analysis, limit: float) -> float:
 # ---------------------------------------------------------------- segments
 
 
-def segments_for(w: Window, cfg: PlanConfig) -> list[Segment]:
+def segments_for(w: Window, cfg: PlanConfig, budget: float | None = None) -> list[Segment]:
     lead_speed = cfg.lead_speed if cfg.mode == "montage" else 1.25
-    # a clip is the whole story of one push, so its lead reaches back the full
-    # window; in a montage the lead is capped so a merged window does not become
-    # one long unedited shot
-    max_lead = cfg.max_lead * lead_speed if cfg.mode == "montage" else cfg.clip_pre
     hit_start = max(w.start, w.peak - cfg.hit_pre)
     hit_end = min(w.end, w.peak + cfg.hit_post)
+    if cfg.mode == "montage":
+        # the lead is capped so a merged window does not become one long unedited shot
+        max_lead = cfg.max_lead * lead_speed
+        tail_end = w.end
+    else:
+        # events share the clip: each gets `budget` output seconds. The hit is the
+        # payoff and stays whole; what is left splits lead-heavy, because the
+        # build-up has to read while the aftermath only lingers
+        room = max(0.0, (budget or cfg.clip_max) - (hit_end - hit_start) / cfg.hit_speed)
+        max_lead = min(cfg.clip_pre, room * 0.7 * lead_speed)
+        tail_end = min(w.end, hit_end + room * 0.3)
     lead_start = max(w.start, hit_start - max_lead)
 
     out: list[Segment] = []
@@ -282,8 +290,23 @@ def segments_for(w: Window, cfg: PlanConfig) -> list[Segment]:
         out.append(Segment(w.src, lead_start, hit_start, lead_speed, "lead", w.score))
     if hit_end - hit_start >= cfg.min_segment:
         out.append(Segment(w.src, hit_start, hit_end, cfg.hit_speed, "hit", w.score))
-    if w.end - hit_end >= cfg.min_segment:
-        out.append(Segment(w.src, hit_end, w.end, 1.0, "tail", w.score))
+    if tail_end - hit_end >= cfg.min_segment:
+        out.append(Segment(w.src, hit_end, tail_end, 1.0, "tail", w.score))
+    return out
+
+
+def _chunked(windows: list[Window], size: int) -> list[list[Window]]:
+    """Balanced chronological chunks: five windows make 3+2, never 3+1+1 --
+    a lone trailing one-event clip reads as a leftover, not a story."""
+    if not windows:
+        return []
+    count = -(-len(windows) // size)
+    base, extra = divmod(len(windows), count)
+    out, i = [], 0
+    for j in range(count):
+        step = base + (j < extra)
+        out.append(windows[i:i + step])
+        i += step
     return out
 
 
@@ -327,10 +350,14 @@ def build_plan(
             if stem in stems:  # two inputs with one stem would overwrite each other
                 stem = f"{stem}_{src}"
             stems.add(stem)
-            for k, w in enumerate(sorted((w for w in windows if w.src == src),
-                                         key=lambda w: w.peak), start=1):
+            ws = sorted((w for w in windows if w.src == src), key=lambda w: w.peak)
+            for k, chunk in enumerate(_chunked(ws, cfg.clip_events), start=1):
                 title = title_for(cfg.lang, f"{seed}#{stem}#{k}")
-                segments = _decorate(segments_for(w, cfg), title, cfg,
+                # a hair under the cap: beat snapping grows cuts, and the trim
+                # that enforces the promise must find padding, not the payoff
+                budget = (cfg.clip_max - 2 * cfg.beat_snap) / len(chunk)
+                raw = [s for w in chunk for s in segments_for(w, cfg, budget)]
+                segments = _decorate(raw, title, cfg,
                                      caption_from=cursor, adlib_from=ad_cursor)
                 cursor += _captions_used(segments)
                 ad_cursor += _adlibs_used(segments)
@@ -339,7 +366,7 @@ def build_plan(
                 # to the beat anyway -- the music just fades out
                 segments = _snapped(segments, grid_of(i), cfg)
                 segments = _trim_to_target(segments, cfg.clip_max, cfg.min_segment,
-                                           slack=0.0)
+                                           slack=0.0, spare_hits=True)
                 groups.append(Group(f"{stem}_{k:02d}", title, hashtags_for(cfg.lang),
                                     segments, music_of(i)))
                 i += 1
@@ -483,13 +510,35 @@ def _out_total(segments: list[Segment]) -> float:
 
 
 def _trim_to_target(
-    segments: list[Segment], target: float, min_segment: float, slack: float = 1.5
+    segments: list[Segment],
+    target: float,
+    min_segment: float,
+    slack: float = 1.5,
+    spare_hits: bool = False,
 ) -> list[Segment]:
     """`slack` is how far past `target` is tolerable: a montage length is a taste,
     a clip length is a promise."""
     # epsilon, not 0: a room of ~1e-17 leaves out_duration unchanged after the
     # subtraction and the loop never converges
     eps = 1e-3
+    if spare_hits:
+        # a bundled clip runs close to the cap by construction, so cutting blindly
+        # from the end would eat the last event's hit -- the payoff. Shave the
+        # padding first: tails from their end, leads from their start, so every
+        # event stays contiguous with its own hit and only blank footage goes
+        for seg in reversed(segments[1:]):
+            overshoot = _out_total(segments) - target
+            if overshoot <= slack + eps:
+                return segments
+            if seg.kind == "hit":
+                continue
+            give = min(seg.out_duration - min_segment, overshoot) * seg.speed
+            if give <= eps:
+                continue
+            if seg.kind == "tail":
+                seg.end -= give
+            else:
+                seg.start += give
     overshoot = _out_total(segments) - target
     while overshoot > slack + eps and len(segments) > 1:
         last = segments[-1]
@@ -513,19 +562,32 @@ def _snapped(segments: list[Segment], beats: list[float] | None, cfg: PlanConfig
     period = float(np.median(np.diff(arr))) if len(arr) > 1 else 0.0
     snap = max(cfg.beat_snap, period / 2)
     out_t = 0.0
-    for seg in segments:
+    for i, seg in enumerate(segments):
         out_t -= seg.trans_in
         desired = out_t + seg.out_duration
         nearest = float(arr[int(np.argmin(np.abs(arr - desired)))])
         new_len = nearest - out_t
         if abs(nearest - desired) <= snap and new_len >= cfg.min_segment:
             delta = (new_len - seg.out_duration) * seg.speed
+            # neighbouring events share the clip, so a stretched cut must stop at
+            # the neighbour's footage: past it the clip visibly rewinds on screen.
+            # Clamp only when the neighbour really was on the other side before the
+            # stretch -- a montage hook sits anywhere in source time and is no wall
             if seg.kind == "tail":
+                old = seg.end
                 seg.end += delta
+                nxt = segments[i + 1] if i + 1 < len(segments) else None
+                if nxt and nxt.src == seg.src and old <= nxt.start < seg.end:
+                    seg.end = nxt.start
             else:
+                old = seg.start
                 seg.start -= delta
-            if seg.start < 0:
-                seg.start = 0.0
+                prev = segments[i - 1] if i else None
+                if seg.kind == "lead" and prev and prev.src == seg.src \
+                        and seg.start < prev.end <= old:
+                    seg.start = prev.end
+                if seg.start < 0:
+                    seg.start = 0.0
         out_t += seg.out_duration
     return segments
 

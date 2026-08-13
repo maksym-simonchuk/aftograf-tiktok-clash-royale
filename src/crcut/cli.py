@@ -90,20 +90,20 @@ def _load_or_build_plan(args, root: Path, out_dir: Path, debug_dir: Path | None)
         if debug_dir:
             _write_debug(an, debug_dir)
 
-    seed = "|".join(sorted(v.name for v in videos))
-    # clips: a track per clip, so a run of 18 uploads does not sound like one song
-    wanted = args.variants if args.mode == "montage" \
-        else sum(len(a.highlights) for a in analyses)
-    tracks, grids = _resolve_music(args, root, args.duration, wanted, seed)
-    for t, g in zip(tracks, grids):
-        print(f"music: {t.name} ({len(g)} beats)")
-
     voice = _resolve_voice(args)
     if voice:
         print(f"voice: {voice} ({args.voice_style})")
 
     cfg = PlanConfig(mode=args.mode, lang=args.lang, target_duration=args.duration,
                      variants=args.variants, voice=voice, voice_style=args.voice_style)
+
+    seed = "|".join(sorted(v.name for v in videos))
+    # clips: a track per clip, so a batch of uploads does not sound like one song
+    wanted = args.variants if args.mode == "montage" \
+        else sum(-(-len(a.highlights) // cfg.clip_events) for a in analyses)
+    tracks, grids = _resolve_music(args, root, args.duration, wanted, seed)
+    for t, g in zip(tracks, grids):
+        print(f"music: {t.name} ({len(g)} beats)")
     plan = build_plan(analyses, cfg, tracks=tracks, grids=grids)
     plan.dump(out_dir / "plan.json")
     print(f"plan -> {out_dir / 'plan.json'}")
