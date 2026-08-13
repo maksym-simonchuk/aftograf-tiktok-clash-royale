@@ -35,6 +35,17 @@ def test_no_caption_is_reused_across_variants():
     assert len(set(lines)) == len(lines)
 
 
+def test_adlibs_are_spoken_between_the_captions_and_never_repeat():
+    events = [20.0 + 25.0 * i for i in range(10)]
+    plan = build_plan([make_analysis("a", 300.0, events)], PlanConfig(target_duration=42.0))
+
+    lines = [s.adlib for g in plan.groups for s in g.segments if s.adlib]
+    assert len(lines) >= 3
+    assert len(set(lines)) == len(lines)
+    # spoken reactions live where nothing is written, so the two never overlap
+    assert not any(s.adlib and s.caption for g in plan.groups for s in g.segments)
+
+
 def test_variants_differ_in_length_and_opening():
     events = [20.0 + 25.0 * i for i in range(10)]
     plan = build_plan([make_analysis("a", 300.0, events)], PlanConfig(target_duration=42.0))

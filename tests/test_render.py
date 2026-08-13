@@ -118,7 +118,9 @@ def test_every_caption_gets_a_narration_line(fake_cr, tmp_path):
                        debug_dir=tmp_path / "debug", metas=load_metas(plan.sources))
 
     graph = (tmp_path / "debug" / f"filtergraph_{plan.groups[0].name}.txt").read_text()
-    assert graph.count("volume=1.7") == sum(bool(s.caption) for s in plan.groups[0].segments)
+    segments = plan.groups[0].segments
+    spoken = sum(bool(s.caption) for s in segments) + sum(bool(s.adlib) for s in segments)
+    assert graph.count("volume=1.7") == spoken
     assert ffprobe_json(out, "a:0")["streams"][0]["codec_name"] == "aac"
 
 

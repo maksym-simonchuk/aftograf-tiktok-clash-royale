@@ -46,6 +46,7 @@ class PlanConfig:
     caption_len: float = 1.7
     variants: int = 3
     voice: str | None = None  # system voice that reads the captions out loud
+    voice_style: str = "grandpa"  # recipe in voice.STYLES: how that voice is shaped
 
 
 @dataclass
@@ -59,6 +60,7 @@ class Segment:
     trans_in: float = 0.0  # cross-fade overlap with the previous shot, 0 = hard cut
     trans_kind: str = ""
     caption: str = ""
+    adlib: str = ""  # spoken only -- the narrator's reaction, never drawn on screen
 
     @property
     def out_duration(self) -> float:
@@ -99,6 +101,7 @@ class EditPlan:
     fps: int
     music: str | None
     voice: str | None
+    voice_style: str
     sources: list[str]
     groups: list[Group]
     events: dict[str, list[float]] = field(default_factory=dict)
@@ -113,6 +116,7 @@ class EditPlan:
             "fps": self.fps,
             "music": self.music,
             "voice": self.voice,
+            "voice_style": self.voice_style,
             "sources": self.sources,
             "events": {k: [round(x, 3) for x in v] for k, v in self.events.items()},
             "groups": [
@@ -132,6 +136,7 @@ class EditPlan:
                             "trans_in": round(s.trans_in, 3),
                             "trans_kind": s.trans_kind,
                             "caption": s.caption,
+                            "adlib": s.adlib,
                         }
                         for s in g.segments
                     ],
@@ -156,6 +161,7 @@ class EditPlan:
             fps=d["fps"],
             music=d.get("music"),
             voice=d.get("voice"),
+            voice_style=d.get("voice_style", "grandpa"),
             sources=d["sources"],
             events=d.get("events", {}),
             groups=[
@@ -264,11 +270,14 @@ def build_plan(
 
     groups: list[Group] = []
     cursor = 0  # walks the caption pool across groups, so no line is reused in one run
+    ad_cursor = 0
     if cfg.mode == "clips":
         for i, w in enumerate(ranked):
             title = title_for(cfg.lang, seed + str(i))
-            segments = _decorate(segments_for(w, cfg), title, cfg, caption_from=cursor)
+            segments = _decorate(segments_for(w, cfg), title, cfg,
+                                 caption_from=cursor, adlib_from=ad_cursor)
             cursor += _captions_used(segments)
+            ad_cursor += _adlibs_used(segments)
             groups.append(
                 Group(f"clip_{i:02d}", title, hashtags_for(cfg.lang), _snapped(segments, beats, cfg))
             )
@@ -279,9 +288,11 @@ def build_plan(
             title = title_for(cfg.lang, f"{seed}#{v}")
             target = cfg.target_duration * VARIANT_SCALE[v % len(VARIANT_SCALE)]
             segments = _montage_segments(ranked, cfg, target, hook=v)
-            segments = _decorate(segments, title, cfg, shift=v, caption_from=cursor)
+            segments = _decorate(segments, title, cfg, shift=v,
+                                 caption_from=cursor, adlib_from=ad_cursor)
             segments = _trim_to_target(segments, target, cfg.min_segment)
             cursor += _captions_used(segments)
+            ad_cursor += _adlibs_used(segments)
             groups.append(
                 Group(f"montage_v{v + 1}", title, hashtags_for(cfg.lang),
                       _snapped(segments, beats, cfg))
@@ -296,6 +307,7 @@ def build_plan(
         fps=cfg.fps,
         music=str(music) if music else None,
         voice=cfg.voice,
+        voice_style=cfg.voice_style,
         sources=sources,
         groups=groups,
         events={Path(a.meta.path).name: a.highlights for a in analyses},
@@ -303,10 +315,16 @@ def build_plan(
 
 
 def _decorate(
-    segments: list[Segment], title: str, cfg: PlanConfig, shift: int = 0, caption_from: int = 0
+    segments: list[Segment],
+    title: str,
+    cfg: PlanConfig,
+    shift: int = 0,
+    caption_from: int = 0,
+    adlib_from: int = 0,
 ) -> list[Segment]:
-    """Cross-fades and on-screen captions -- everything the renderer draws on top."""
-    return _assign_captions(_assign_transitions(segments, cfg, shift), title, cfg, caption_from)
+    """Cross-fades, on-screen captions and the reactions only the narrator says."""
+    segments = _assign_captions(_assign_transitions(segments, cfg, shift), title, cfg, caption_from)
+    return _assign_adlibs(segments, cfg, adlib_from)
 
 
 def _assign_transitions(segments: list[Segment], cfg: PlanConfig, shift: int = 0) -> list[Segment]:
@@ -344,8 +362,28 @@ def _assign_captions(
     return segments
 
 
+def _assign_adlibs(segments: list[Segment], cfg: PlanConfig, start: int = 0) -> list[Segment]:
+    """Spoken reactions that are never written on screen.
+
+    They sit on the tail of a moment: the caption is read as the hit lands, the
+    old man comments right after it, so the two never talk over each other.
+    """
+    pool = ADLIBS.get(cfg.lang, ADLIBS["ru"])
+    used = 0
+    for i, seg in enumerate(s for s in segments if s.kind == "tail"):
+        if i % 2:  # every other tail, or the narrator never shuts up
+            continue
+        seg.adlib = pool[(start + used) % len(pool)]
+        used += 1
+    return segments
+
+
 def _captions_used(segments: list[Segment]) -> int:
     return sum(1 for seg in segments[1:] if seg.kind == "hit")
+
+
+def _adlibs_used(segments: list[Segment]) -> int:
+    return sum(1 for seg in segments if seg.adlib)
 
 
 def _montage_segments(
@@ -525,6 +563,47 @@ CAPTIONS = {
         "I REWATCHED IT TEN TIMES",
         "TRY TO REPEAT THAT",
         "GG",
+    ],
+}
+
+# never drawn, only spoken -- so these are written the way they are said, not shouted.
+# Short: they land on the tail of a moment and must be over before the next one.
+ADLIBS = {
+    "ru": [
+        "Ох ты ж.",
+        "Ай-ай-ай.",
+        "Ну ты даёшь.",
+        "Куда собрался?",
+        "Вот это дед понимает.",
+        "Ну-ну.",
+        "В моё время так не умели.",
+        "Тьфу ты.",
+        "Спокойно, я всё видел.",
+        "Ох, батюшки.",
+        "Молодец, внучек.",
+        "Ну всё, финиш.",
+        "Я даже привстал.",
+        "Не смотри, там страшно.",
+        "Вот так вот, да.",
+        "Ай, красиво.",
+    ],
+    "en": [
+        "Oh boy.",
+        "Well well.",
+        "Easy now.",
+        "Where do you think you are going?",
+        "Back in my day.",
+        "Oh dear.",
+        "Not bad, kid.",
+        "Goodness me.",
+        "That is all folks.",
+        "I did warn him.",
+        "Hoo boy.",
+        "Watch him go.",
+        "I nearly stood up.",
+        "Do not look, it is scary.",
+        "There we go.",
+        "Oh that is nice.",
     ],
 }
 

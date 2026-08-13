@@ -96,10 +96,10 @@ def _load_or_build_plan(args, root: Path, out_dir: Path, debug_dir: Path | None)
 
     voice = _resolve_voice(args)
     if voice:
-        print(f"voice: {voice}")
+        print(f"voice: {voice} ({args.voice_style})")
 
     cfg = PlanConfig(mode=args.mode, lang=args.lang, target_duration=args.duration,
-                     variants=args.variants, voice=voice)
+                     variants=args.variants, voice=voice, voice_style=args.voice_style)
     plan = build_plan(analyses, cfg, music=tracks[0] if tracks else None, beats=beats)
     if len(tracks) > 1:  # a different track per variant when there is a choice
         for i, group in enumerate(plan.groups):
@@ -239,6 +239,8 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--music", help="music track (default: first file in assets/music/)")
     p.add_argument("--no-music", action="store_true", help="render silent (add sound in the TikTok app)")
     p.add_argument("--voice", help="system voice that reads the captions (see --voices)")
+    p.add_argument("--voice-style", choices=sorted(vo.STYLES), default=vo.DEFAULT_STYLE,
+                   help="how that voice is shaped (see --help choices)")
     p.add_argument("--no-voice", action="store_true", help="no narration over the captions")
     p.add_argument("--voices", action="store_true", help="list installed system voices and exit")
     p.add_argument("--out", default="out", help="output folder")

@@ -58,7 +58,7 @@ def render_group(
     cache_dir = out_path.parent / ".cache"
     stickers = _stickers(plan, group, cache_dir)
     sfx = _sfx_cues(group, cache_dir)
-    voice = _voice_cues(group, plan.voice, cache_dir)
+    voice = _voice_cues(group, plan.voice, plan.voice_style, cache_dir)
     sticker_index = len(inputs) + (1 if music else 0)
 
     graph, labels = _video_graph(plan, group, remap, inputs, metas)
@@ -253,14 +253,19 @@ def _sfx_cues(group: Group, cache_dir: Path) -> list[tuple[Path, float]]:
     return cues
 
 
-def _voice_cues(group: Group, voice: str | None, cache_dir: Path) -> list[tuple[Path, float]]:
-    """The captions, read out loud at the moment they appear on screen."""
+def _voice_cues(
+    group: Group, voice: str | None, style: str, cache_dir: Path
+) -> list[tuple[Path, float]]:
+    """The captions read out as they appear, plus the reactions between them."""
     if not voice or not vo.available():
         return []
     cues = []
     for seg, start in group.timeline():
         if seg.caption:
-            cues.append((vo.speak(seg.caption, voice, cache_dir), max(start, 0.0)))
+            cues.append((vo.speak(seg.caption, voice, cache_dir, style), max(start, 0.0)))
+        if seg.adlib:
+            # a beat into the shot, so the reaction follows the moment it reacts to
+            cues.append((vo.speak(seg.adlib, voice, cache_dir, style), max(start + 0.25, 0.0)))
     return cues
 
 
