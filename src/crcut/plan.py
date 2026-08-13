@@ -60,6 +60,7 @@ class Segment:
     speed: float
     kind: str
     score: float = 0.0
+    peak: float = 0.0  # source-time impact moment inside a hit; 0 = unknown
     trans_in: float = 0.0  # cross-fade overlap with the previous shot, 0 = hard cut
     trans_kind: str = ""
     caption: str = ""
@@ -137,6 +138,7 @@ class EditPlan:
                             "speed": round(s.speed, 3),
                             "kind": s.kind,
                             "score": round(s.score, 3),
+                            "peak": round(s.peak, 3),
                             "trans_in": round(s.trans_in, 3),
                             "trans_kind": s.trans_kind,
                             "caption": s.caption,
@@ -289,7 +291,8 @@ def segments_for(w: Window, cfg: PlanConfig, budget: float | None = None) -> lis
     if hit_start - lead_start >= cfg.min_segment:
         out.append(Segment(w.src, lead_start, hit_start, lead_speed, "lead", w.score))
     if hit_end - hit_start >= cfg.min_segment:
-        out.append(Segment(w.src, hit_start, hit_end, cfg.hit_speed, "hit", w.score))
+        out.append(Segment(w.src, hit_start, hit_end, cfg.hit_speed, "hit", w.score,
+                           peak=w.peak))
     if tail_end - hit_end >= cfg.min_segment:
         out.append(Segment(w.src, hit_end, tail_end, 1.0, "tail", w.score))
     return out
@@ -331,6 +334,7 @@ def build_plan(
         return grids[i % len(grids)] if grids else None
 
     sources = [a.meta.path for a in analyses]
+    durs = [a.meta.duration for a in analyses]
     windows = build_windows(analyses, cfg)
     if not windows:
         raise ValueError("no highlight windows found -- run with --debug and inspect out/debug/")
@@ -353,10 +357,15 @@ def build_plan(
             ws = sorted((w for w in windows if w.src == src), key=lambda w: w.peak)
             for k, chunk in enumerate(_chunked(ws, cfg.clip_events), start=1):
                 title = title_for(cfg.lang, f"{seed}#{stem}#{k}")
+                # cold open: the payoff shows first, the story explains it after --
+                # a chronological build-up loses the viewer before the first hit
+                best = max(chunk, key=lambda w: w.score)
+                hook = _hook_seg(best, cfg, durs[best.src])
                 # a hair under the cap: beat snapping grows cuts, and the trim
                 # that enforces the promise must find padding, not the payoff
-                budget = (cfg.clip_max - 2 * cfg.beat_snap) / len(chunk)
-                raw = [s for w in chunk for s in segments_for(w, cfg, budget)]
+                budget = (cfg.clip_max - 2 * cfg.beat_snap - hook.out_duration) \
+                    / len(chunk)
+                raw = [hook] + [s for w in chunk for s in segments_for(w, cfg, budget)]
                 segments = _decorate(raw, title, cfg,
                                      caption_from=cursor, adlib_from=ad_cursor)
                 cursor += _captions_used(segments)
@@ -376,7 +385,7 @@ def build_plan(
         for v in range(max(1, cfg.variants)):
             title = title_for(cfg.lang, f"{seed}#{v}")
             target = cfg.target_duration * VARIANT_SCALE[v % len(VARIANT_SCALE)]
-            segments = _montage_segments(ranked, cfg, target, hook=v)
+            segments = _montage_segments(ranked, cfg, target, durs, hook=v)
             segments = _decorate(segments, title, cfg, shift=v,
                                  caption_from=cursor, adlib_from=ad_cursor)
             segments = _trim_to_target(segments, target, cfg.min_segment)
@@ -426,6 +435,8 @@ def _assign_transitions(segments: list[Segment], cfg: PlanConfig, shift: int = 0
         prev = segments[i - 1] if i else None
         if prev is None or (seg.src == prev.src and abs(seg.start - prev.end) < 0.05):
             continue
+        if prev.kind == "hook" and cfg.mode == "clips":
+            continue  # the cold open cuts into the story, a melt would soften it
         # a fade longer than a third of either shot swallows the shot itself
         dur = min(cfg.transition, prev.out_duration / 3.0, seg.out_duration / 3.0)
         if dur < 0.12:
@@ -477,8 +488,18 @@ def _adlibs_used(segments: list[Segment]) -> int:
     return sum(1 for seg in segments if seg.adlib)
 
 
+def _hook_seg(best: Window, cfg: PlanConfig, dur: float) -> Segment:
+    """Teaser of the strongest moment. The end is clamped to the file: past EOF
+    ffmpeg silently delivers fewer frames than the plan declares, and every
+    cut and xfade offset after that drifts."""
+    end = min(best.peak + cfg.hook_len / 2, dur)
+    return Segment(best.src, max(0.0, end - cfg.hook_len), end,
+                   cfg.hook_speed, "hook", best.score)
+
+
 def _montage_segments(
-    ranked: list[Window], cfg: PlanConfig, target: float, hook: int = 0
+    ranked: list[Window], cfg: PlanConfig, target: float, durs: list[float],
+    hook: int = 0
 ) -> list[Segment]:
     chosen: list[Window] = []
     total = 0.0
@@ -489,14 +510,7 @@ def _montage_segments(
             break
 
     best = ranked[hook % len(ranked)]
-    hook_seg = Segment(
-        src=best.src,
-        start=max(0.0, best.peak - cfg.hook_len / 2),
-        end=best.peak + cfg.hook_len / 2,
-        speed=cfg.hook_speed,
-        kind="hook",
-        score=best.score,
-    )
+    hook_seg = _hook_seg(best, cfg, durs[best.src])
 
     body: list[Segment] = []
     for w in sorted(chosen, key=lambda x: (x.src, x.start)):
@@ -750,23 +764,54 @@ HASHTAGS = {
            "#gaming", "#fyp"],
 }
 
-# the second line of the post: the title hooks, this one tells what is inside
+# the second line of the post: the title hooks, this one makes the viewer act.
+# researched 2026-08 from viral gaming captions: POV / open loop / save-share CTA /
+# comment bait / tag-a-friend / challenge -- 20 per language, so a whole run of
+# clips never repeats a line
 DESCRIPTIONS = {
     "ru": [
-        "Лучшие моменты матча подряд — досмотри до последнего 👀",
-        "Три пуша за 20 секунд, финал решает всё 🏆",
-        "Клатч за клатчем, без воды ⚡",
-        "Вот так выигрываются матчи в Клеш Рояль 👑",
-        "Смотри, что бывает в доп. время 🔥",
-        "Сохрани, если тоже так хочешь научиться 📌",
+        "POV: у тебя один пуш до потери башни 😳",
+        "Досмотри до конца, там разворот",
+        "Сохрани это перед следующей каткой",
+        "Оцени катку от 1 до 10 в комментах",
+        "Отметь того, кто всегда сливает клатч",
+        "Смотри до последней секунды, не пожалеешь",
+        "Это видео зациклено не просто так 👀",
+        "Плюс если этот пуш заслужил победу",
+        "Угадай, какая карта спасла раунд",
+        "Думал что в безопасности, ага щас",
+        "Никто не предупредил, что так бывает",
+        "Попробуй не зажмуриться на последней секунде",
+        "Кинь другу, который сливает 2x эликсир",
+        "Смог бы ты повторить этот клатч",
+        "Все ненавидят такую деку, признавайтесь",
+        "Кидай 🔥 если башня заслужила такой обмен",
+        "Если честно, руки тряслись весь раунд",
+        "Скрин этой деки, пока не удалили",
+        "Пересмотри, ты что-то пропустил в начале",
+        "Притормози и глянь последние 3 секунды",
     ],
     "en": [
-        "Best moments of the match back to back -- watch till the last one 👀",
-        "Three pushes in 20 seconds, the finale decides it all 🏆",
-        "Clutch after clutch, no filler ⚡",
-        "This is how you win in Clash Royale 👑",
-        "See what overtime does to people 🔥",
-        "Save this if you want to learn the move 📌",
+        "POV: you're one push away from losing this tower 😳",
+        "Wait for the ending, it's not what you think",
+        "Save this before your next match, trust me",
+        "Comment your rating 1-10, no cap",
+        "Tag someone who always chokes at 2x elixir",
+        "Watch till the last second, I promise it's worth it",
+        "This clip loops for a reason, look closely 👀",
+        "Rate my push before you scroll away",
+        "Guess what card saves this round",
+        "Bro thought he was safe lol",
+        "Nobody warned me this could happen",
+        "Try not to flinch at the last second",
+        "Share this with your duo partner rn",
+        "Could you have pulled this off",
+        "All my homies hate this matchup",
+        "Drop a 🔥 if this deserved the win",
+        "Not gonna lie, my hands were shaking",
+        "Screenshot this deck before it's gone",
+        "Replay it, you missed something first time",
+        "Slow down and watch the last 3 seconds",
     ],
 }
 

@@ -142,7 +142,7 @@ def _video_graph(
         # this, and blending them into half-resolution chroma is what frays the
         # coloured edges of the text. The 4:2:0 conversion happens once, at [vout].
         # settb last, after zoompan -- xfade refuses inputs whose timebases disagree
-        tail = f"{_punch(seg, plan)},format=yuv444p,settb=AVTB[v{i}]"
+        tail = f"{_punch(seg, plan)}{_flash(seg, plan)},format=yuv444p,settb=AVTB[v{i}]"
         if pillarbox:
             graph.append(base + f",split=2[f{i}s][b{i}s]")
             graph.append(
@@ -179,6 +179,25 @@ def _punch(seg: Segment, plan: EditPlan) -> str:
         f":x='iw/2-(iw/zoom/2)+7*sin({t}*106){shake}'"
         f":y='ih/2-(ih/zoom/2)+6*cos({t}*82){shake}'"
         f":d=1:s={plan.width}x{plan.height}:fps={plan.fps}"
+    )
+
+
+def _flash(seg: Segment, plan: EditPlan) -> str:
+    """A two-frame white pop and a colour-split shiver on the impact frame itself.
+
+    The zoom punches on the cut; this marks the moment the tower actually goes,
+    which sits `hit_pre` into the slow-mo. Skipped when the trim ate past the
+    peak. Clips only: montage stacks three variants of captions and adlibs
+    already, and its pixels stay reproducible from older plans.
+    """
+    if plan.mode != "clips" or seg.kind != "hit" or not seg.peak:
+        return ""
+    at = (seg.peak - seg.start) / seg.speed
+    if not 0.0 <= at <= seg.out_duration - 0.15:
+        return ""
+    return (
+        f",eq=brightness=0.28:enable='between(t,{at:.3f},{at + 0.07:.3f})'"
+        f",rgbashift=rh=6:bh=-6:enable='between(t,{at + 0.07:.3f},{at + 0.15:.3f})'"
     )
 
 

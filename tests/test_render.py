@@ -146,3 +146,14 @@ def test_hand_edited_plan_changes_the_output(fake_cr, tmp_path):
     out = render_group(edited, edited.groups[0], tmp_path / "edited.mp4",
                        metas=load_metas(edited.sources))
     assert abs(float(ffprobe_json(out)["format"]["duration"]) - edited.groups[0].out_duration) < 0.5
+
+
+def test_impact_flash_fires_in_clips_and_never_in_montage():
+    # the white pop marks the tower hit in clips; montage pixels must not change
+    seg = render.Segment(0, 10.0, 12.0, 0.55, "hit", 1.0, peak=11.2)
+
+    def plan_for(mode: str) -> EditPlan:
+        return EditPlan(1, mode, "ru", 1080, 1920, 30, None, None, "clean", [], [])
+
+    assert "eq=brightness" in render._flash(seg, plan_for("clips"))
+    assert render._flash(seg, plan_for("montage")) == ""

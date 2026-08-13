@@ -102,6 +102,29 @@ def test_a_clip_bundles_up_to_three_events():
     assert 8.0 <= plan.groups[0].out_duration <= 20.0
 
 
+def test_a_clip_opens_cold_on_its_best_moment():
+    # payoff first: a teaser of the strongest hit, hard-cut into the chronology
+    analyses = [make_analysis("a", 90.0, [20.0, 45.0, 70.0])]
+    group = build_plan(analyses, PlanConfig(mode="clips")).groups[0]
+
+    first = group.segments[0]
+    assert first.kind == "hook"
+    assert first.score == max(s.score for s in group.segments)
+    assert group.segments[1].trans_in == 0.0  # a melt would soften the cut
+    assert all(s.peak > 0 for s in group.segments if s.kind == "hit")
+
+
+def test_hook_never_reads_past_the_end_of_the_file():
+    # a peak at the last frame must not ask ffmpeg for frames past EOF --
+    # it silently under-delivers and every offset after the hook drifts
+    analyses = [make_analysis("a", 30.0, [10.0, 20.0, 29.9])]
+    for cfg in (PlanConfig(mode="clips"), PlanConfig()):
+        hooks = [g.segments[0] for g in build_plan(analyses, cfg).groups]
+        assert all(h.kind == "hook" for h in hooks)
+        assert all(h.start < h.end <= 30.0 for h in hooks)
+    assert any(h.end == 30.0 for h in hooks)  # the clamp actually engaged
+
+
 def test_four_events_split_into_balanced_pairs():
     # 2+2, not 3+1: a lone trailing one-event clip reads as a leftover
     analyses = [make_analysis("a", 200.0, [20.0, 60.0, 100.0, 140.0])]
@@ -132,7 +155,7 @@ def test_chained_highlights_keep_every_moment():
     plan = build_plan(analyses, PlanConfig(mode="clips"))
 
     assert [sum(s.kind == "hit" for s in g.segments) for g in plan.groups] == [3, 2]
-    starts = [s.start for g in plan.groups for s in g.segments]
+    starts = [s.start for g in plan.groups for s in g.segments[1:]]  # [0] is the hook
     assert starts == sorted(starts)
 
 
@@ -144,9 +167,9 @@ def test_clips_are_split_per_match_and_chronological():
     assert [g.name for g in plan.groups] == ["МАТЧ_1_01", "МАТЧ_1_02", "b_01"]
     for group in plan.groups:
         assert len({seg.src for seg in group.segments}) == 1  # a clip is one match
-        starts = [s.start for s in group.segments]
+        starts = [s.start for s in group.segments[1:]]  # [0] is the cold-open hook
         assert starts == sorted(starts)
-    assert plan.groups[0].segments[-1].end <= plan.groups[1].segments[0].start
+    assert plan.groups[0].segments[-1].end <= plan.groups[1].segments[1].start
 
 
 def test_a_sparse_grid_never_costs_a_highlight_its_hit():
@@ -174,7 +197,7 @@ def test_snapping_never_rewinds_across_events_in_one_clip():
 
     for group in plan.groups:
         for prev, seg in zip(group.segments, group.segments[1:]):
-            if seg.kind == "lead" and seg.src == prev.src:
+            if seg.kind == "lead" and seg.src == prev.src and prev.kind != "hook":
                 assert seg.start >= prev.end - 1e-6
 
 
