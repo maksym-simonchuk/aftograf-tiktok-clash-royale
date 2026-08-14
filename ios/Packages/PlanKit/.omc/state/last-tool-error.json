@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/admin/Desktop/afograf-tiktok/ios/Packages/RenderKit && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test 2>&1 | tail -4; echo ===PIPE; stat -f '%Sm' -t '%H:%M:%...",
-  "error": "Exit code 1\n✔ Suite CompositorEffectsTests passed after 0.043 seconds.\n✔ Test roughCutDurationMatchesGoldenPlan() passed after 2.947 seconds.\n✔ Suite RoughCutTests passed after 2.947 seconds.\n✔ Test run with 20 tests in 4 suites passed after 2.947 seconds.\n(eval):1: ==PIPE not found",
-  "timestamp": "2026-08-13T19:32:21.688Z",
-  "retry_count": 1
-}

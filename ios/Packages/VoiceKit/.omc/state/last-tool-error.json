@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd ios/Packages/RenderKit && env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test 2>&1 | tail -8\",\"timeout\":300000,\"description\":\"Run RenderKit test suite with Xcode too...",
-  "error": "Exit code 1\n(eval):cd:1: no such file or directory: ios/Packages/RenderKit",
-  "timestamp": "2026-08-13T18:47:58.848Z",
-  "retry_count": 1
-}

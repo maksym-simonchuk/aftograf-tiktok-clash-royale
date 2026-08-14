@@ -15,3 +15,4 @@ assets/fonts/*
 !assets/**/.gitkeep
 .omc/state/
 .omc/project-memory.json
+**/.omc/state/
