@@ -63,7 +63,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 > `make ios-install` от чистого чекаута до запущенного на телефоне — одна команда, ≤10 мин; повторная инкрементальная — ≤3 мин.
 
 - Проверка: `cd ios && time make ios-install` (сначала `git clean` для «чистого чекаута», затем повторный прогон без clean).
-- Статус: **не проверено**.
+- Статус: **частично зелёно** — `make install` работает end-to-end на живом устройстве (Maxim's iPhone, iPhone 17 Pro): сборка с подписью (личная команда, `DEVELOPMENT_TEAM` через `TEAM ?=`), установка через devicectl, инкрементальный прогон ≈1 мин. Найдено по ходу: derivedData вынесен в `/tmp` (iCloud Desktop ломает codesign xattr-ами), устройство должно быть подключено (рецепт сам находит первый connected iPhone). Не измерено: тайминг от чистого чекаута (≤10 мин).
 
 ## A9 — юниты без симулятора, <60с
 > Юнит-тесты DetectKit/PlanKit гоняются на Маке без симулятора (`swift test`), <60с.
