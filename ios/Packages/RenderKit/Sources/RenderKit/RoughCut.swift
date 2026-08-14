@@ -6,14 +6,15 @@ import PlanKit
 /// DetectKit+PlanKit are wired in (plan §6 M3 milestone).
 public enum RoughCut {
     public static func render(
-        group: Group, sources: [URL], target: RenderTarget, mode: String, to outputURL: URL
+        group: Group, sources: [URL], target: RenderTarget, mode: String, to outputURL: URL,
+        progress: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         let (composition, videoComposition) = try await Composer.build(
             group: group, sources: sources, target: target, mode: mode
         )
         try await Encoder.export(
             composition: composition, videoComposition: videoComposition,
-            target: target, group: group, to: outputURL
+            target: target, group: group, to: outputURL, progress: progress
         )
     }
 }

@@ -47,6 +47,7 @@ enum Pipeline {
     static func waitOutThermalThrottle() async {
         while ProcessInfo.processInfo.thermalState == .serious || ProcessInfo.processInfo.thermalState == .critical {
             try? await Task.sleep(for: .seconds(5))
+            if Task.isCancelled { return }
         }
     }
 
@@ -55,7 +56,10 @@ enum Pipeline {
     /// the batch model in QueueView. `idx` is the item's position within the
     /// current batch, forwarded to descFor so a multi-video batch rotates
     /// through the description pool instead of repeating a line.
-    static func roughCutRender(source: URL, idx: Int = 0) async throws -> (url: URL, caption: String) {
+    static func roughCutRender(
+        source: URL, idx: Int = 0, onProgress: @escaping @Sendable (PipelineStep) -> Void = { _ in }
+    ) async throws -> (url: URL, caption: String) {
+        onProgress(.detecting)
         let meta = try await Probe.probe(url: source)
         let analysis = try await Detect.analyze(meta: meta)
         let input = AnalysisInput(
@@ -64,6 +68,7 @@ enum Pipeline {
             actionStart: analysis.actionStart, actionEnd: analysis.actionEnd
         )
 
+        onProgress(.planning)
         var cfg = PlanConfig()
         cfg.voice = edgeVoices[cfg.lang] // cli.py:94-96 _resolve_voice, edge-tts always available on iOS
 
@@ -86,7 +91,8 @@ enum Pipeline {
         let outputURL = outDir.appendingPathComponent(UUID().uuidString).appendingPathExtension("mov")
         try await render(
             group: group, sources: [source], target: target, mode: plan.mode,
-            voice: plan.voice, voiceStyle: plan.voiceStyle, lang: cfg.lang, to: outputURL
+            voice: plan.voice, voiceStyle: plan.voiceStyle, lang: cfg.lang, to: outputURL,
+            onProgress: onProgress
         )
 
         // cli.py:57-60 .txt sidecar format, ported verbatim: title, then a
@@ -104,7 +110,8 @@ enum Pipeline {
     /// render.py:301-369 (`_audio_graph`'s ducking/mix/limiter/loudnorm tail).
     private static func render(
         group: Group, sources: [URL], target: RenderTarget, mode: String,
-        voice: String?, voiceStyle: String, lang: String, to outputURL: URL
+        voice: String?, voiceStyle: String, lang: String, to outputURL: URL,
+        onProgress: @escaping @Sendable (PipelineStep) -> Void
     ) async throws {
         let (composition, videoComposition) = try await Composer.build(
             group: group, sources: sources, target: target, mode: mode
@@ -122,6 +129,7 @@ enum Pipeline {
         // sfxCues(sfxDirectory: nil) returns [] same as render.py's empty-folder case.
         let sfxCues = AudioMix.sfxCues(group: group, sfxDirectory: nil)
         let voiceCues = AudioMix.voiceCues(group: group)
+        onProgress(.voicing)
         let voiceFiles = try await synthesize(cues: voiceCues, voice: voice, style: voiceStyle, lang: lang)
 
         let mix = try await AudioMix.build(
@@ -136,7 +144,8 @@ enum Pipeline {
         try await Encoder.export(
             composition: composition, videoComposition: videoComposition,
             target: target, group: group, audioMix: mix.inputParameters.isEmpty ? nil : mix,
-            to: outputURL
+            to: outputURL,
+            progress: { fraction in onProgress(.rendering(fraction)) }
         )
     }
 
@@ -359,7 +368,9 @@ enum Pipeline {
         }
     }
 
-    private static func outputDirectory() throws -> URL {
+    /// Documents/out/ — where rendered clips land. Also used by QueueStore's
+    /// first-launch migration to recover already-rendered .mov files.
+    static func outputDirectory() throws -> URL {
         let documents = try FileManager.default.url(
             for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true
         )
@@ -368,7 +379,7 @@ enum Pipeline {
         return outDir
     }
 
-    /// Documents/inbox/ — where ImportView copies PHPicker selections before
+    /// Documents/inbox/ — where QueueStore copies PHPicker selections before
     /// the pipeline touches them.
     static func inboxDirectory() throws -> URL {
         let documents = try FileManager.default.url(

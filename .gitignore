@@ -16,3 +16,4 @@ assets/fonts/*
 .omc/state/
 .omc/project-memory.json
 **/.omc/state/
+**/.omc/sessions/

@@ -14,7 +14,8 @@ public enum Encoder {
         target: RenderTarget,
         group: Group,
         audioMix: AVAudioMix? = nil,
-        to outputURL: URL
+        to outputURL: URL,
+        progress: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         if FileManager.default.fileExists(atPath: outputURL.path) {
             try FileManager.default.removeItem(at: outputURL)
@@ -118,15 +119,27 @@ public enum Encoder {
             nonisolated(unsafe) let audioInput = audioInput
             async let videoTask: Void = pumpVideoCFR(
                 output: videoOutput, into: videoInput, frameDuration: frameDuration, totalDuration: compositionDuration,
-                pixelBufferPool: pixelBufferPool, overlay: overlay
+                pixelBufferPool: pixelBufferPool, overlay: overlay, progress: progress
             )
             async let audioTask: Void = pump(output: audioOutput, into: audioInput)
-            _ = try await (videoTask, audioTask)
+            do {
+                _ = try await (videoTask, audioTask)
+            } catch is CancellationError {
+                writer.cancelWriting()
+                try? FileManager.default.removeItem(at: outputURL)
+                throw CancellationError()
+            }
         } else {
-            try await pumpVideoCFR(
-                output: videoOutput, into: videoInput, frameDuration: frameDuration, totalDuration: compositionDuration,
-                pixelBufferPool: pixelBufferPool, overlay: overlay
-            )
+            do {
+                try await pumpVideoCFR(
+                    output: videoOutput, into: videoInput, frameDuration: frameDuration, totalDuration: compositionDuration,
+                    pixelBufferPool: pixelBufferPool, overlay: overlay, progress: progress
+                )
+            } catch is CancellationError {
+                writer.cancelWriting()
+                try? FileManager.default.removeItem(at: outputURL)
+                throw CancellationError()
+            }
         }
 
         await writer.finishWriting()
@@ -242,60 +255,81 @@ public enum Encoder {
     private static func pumpVideoCFR(
         output: AVAssetReaderOutput, into input: AVAssetWriterInput,
         frameDuration: CMTime, totalDuration: CMTime,
-        pixelBufferPool: CVPixelBufferPool, overlay: @escaping (CIImage, Double) -> CIImage
+        pixelBufferPool: CVPixelBufferPool, overlay: @escaping (CIImage, Double) -> CIImage,
+        progress: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         nonisolated(unsafe) let output = output
         nonisolated(unsafe) let input = input
         nonisolated(unsafe) let pool = pixelBufferPool
         let ciContext = CIContext()
         let frameCount = Int((totalDuration.seconds / frameDuration.seconds).rounded(.up))
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let queue = DispatchQueue(label: "renderkit.encoder.pump.video")
-            // requestMediaDataWhenReady only ever re-enters on `queue`, serially --
-            // safe to mutate from the closure despite not being actor-isolated.
-            nonisolated(unsafe) var heldSample: CMSampleBuffer?
-            nonisolated(unsafe) var pending: CMSampleBuffer?
-            nonisolated(unsafe) var slotIndex = 0
-            input.requestMediaDataWhenReady(on: queue) {
-                while input.isReadyForMoreMediaData {
-                    guard slotIndex < frameCount else {
-                        input.markAsFinished()
-                        continuation.resume()
-                        return
-                    }
-                    let slotTime = CMTimeMultiply(frameDuration, multiplier: Int32(slotIndex))
-
-                    while true {
-                        if pending == nil {
-                            pending = output.copyNextSampleBuffer()
+        // requestMediaDataWhenReady's callback runs on our own DispatchQueue,
+        // outside any Swift Task context -- Task.checkCancellation() called
+        // from inside it would never see the caller's cancellation (no
+        // ambient task there to check). Bridge cancellation in via
+        // withTaskCancellationHandler instead, flipping this flag with the
+        // same trusted nonisolated(unsafe) rebind already used above for the
+        // AVFoundation objects; the loop below polls it once per frame.
+        nonisolated(unsafe) var cancelled = false
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let queue = DispatchQueue(label: "renderkit.encoder.pump.video")
+                // requestMediaDataWhenReady only ever re-enters on `queue`, serially --
+                // safe to mutate from the closure despite not being actor-isolated.
+                nonisolated(unsafe) var heldSample: CMSampleBuffer?
+                nonisolated(unsafe) var pending: CMSampleBuffer?
+                nonisolated(unsafe) var slotIndex = 0
+                input.requestMediaDataWhenReady(on: queue) {
+                    while input.isReadyForMoreMediaData {
+                        guard !cancelled else {
+                            input.markAsFinished()
+                            continuation.resume(throwing: CancellationError())
+                            return
                         }
-                        guard let candidate = pending else { break }
-                        if CMSampleBufferGetPresentationTimeStamp(candidate) <= slotTime {
-                            heldSample = candidate
-                            pending = nil
-                        } else {
-                            break
+                        guard slotIndex < frameCount else {
+                            input.markAsFinished()
+                            continuation.resume()
+                            return
+                        }
+                        let slotTime = CMTimeMultiply(frameDuration, multiplier: Int32(slotIndex))
+
+                        while true {
+                            if pending == nil {
+                                pending = output.copyNextSampleBuffer()
+                            }
+                            guard let candidate = pending else { break }
+                            if CMSampleBufferGetPresentationTimeStamp(candidate) <= slotTime {
+                                heldSample = candidate
+                                pending = nil
+                            } else {
+                                break
+                            }
+                        }
+
+                        guard let sample = heldSample,
+                            let composited = compositedSampleBuffer(
+                                from: sample, presentationTime: slotTime, duration: frameDuration,
+                                context: ciContext, pixelBufferPool: pool, overlay: overlay
+                            )
+                        else {
+                            input.markAsFinished()
+                            continuation.resume(throwing: RenderError.readerFailed("no composed frame available for slot \(slotIndex)"))
+                            return
+                        }
+                        if !input.append(composited) {
+                            input.markAsFinished()
+                            continuation.resume()
+                            return
+                        }
+                        slotIndex += 1
+                        if frameCount > 0, slotIndex % 10 == 0 || slotIndex == frameCount {
+                            progress?(Double(slotIndex) / Double(frameCount))
                         }
                     }
-
-                    guard let sample = heldSample,
-                        let composited = compositedSampleBuffer(
-                            from: sample, presentationTime: slotTime, duration: frameDuration,
-                            context: ciContext, pixelBufferPool: pool, overlay: overlay
-                        )
-                    else {
-                        input.markAsFinished()
-                        continuation.resume(throwing: RenderError.readerFailed("no composed frame available for slot \(slotIndex)"))
-                        return
-                    }
-                    if !input.append(composited) {
-                        input.markAsFinished()
-                        continuation.resume()
-                        return
-                    }
-                    slotIndex += 1
                 }
             }
+        } onCancel: {
+            cancelled = true
         }
     }
 

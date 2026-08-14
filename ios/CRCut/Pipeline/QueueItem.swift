@@ -1,11 +1,11 @@
 import Foundation
 
-/// One imported source video moving through the pipeline.
-/// M0: passthrough only (no detection/plan/render yet — those land in M1-M3).
-struct QueueItem: Identifiable {
-    enum Stage: Equatable {
+/// One imported source video moving through the pipeline. Persisted (via
+/// QueueStore) across launches and app kills.
+struct QueueItem: Identifiable, Sendable {
+    enum Stage: Equatable, Sendable {
         case queued
-        case processing
+        case processing(PipelineStep)
         /// A4: device thermally throttled, waiting between items to cool down.
         case paused
         case done(resultURL: URL)
@@ -13,7 +13,9 @@ struct QueueItem: Identifiable {
     }
 
     let id: UUID
-    let sourceURL: URL
+    /// nil only for `.done` items recovered by QueueStore's first-launch
+    /// migration, where no source file could be correlated to the output.
+    let sourceURL: URL?
     var duration: Double = 0
     var stage: Stage = .queued
 
@@ -23,15 +25,35 @@ struct QueueItem: Identifiable {
     var caption: String
 
     var title: String {
-        sourceURL.deletingPathExtension().lastPathComponent
+        if let sourceURL {
+            return sourceURL.deletingPathExtension().lastPathComponent
+        }
+        if case .done(let resultURL) = stage {
+            return resultURL.deletingPathExtension().lastPathComponent
+        }
+        return "Untitled"
     }
 
-    init(id: UUID, sourceURL: URL, duration: Double = 0, stage: Stage = .queued) {
+    var isProcessing: Bool {
+        if case .processing = stage { return true }
+        return false
+    }
+
+    init(id: UUID, sourceURL: URL?, duration: Double = 0, stage: Stage = .queued, caption: String? = nil) {
         self.id = id
         self.sourceURL = sourceURL
         self.duration = duration
         self.stage = stage
-        let placeholderTitle = sourceURL.deletingPathExtension().lastPathComponent
-        self.caption = "\(placeholderTitle)\n\nClash Royale highlights, cut on-device with CRCut.\n\n#clashroyale #cr #mobilegaming"
+        if let caption {
+            self.caption = caption
+        } else {
+            let placeholderTitle = sourceURL?.deletingPathExtension().lastPathComponent ?? "clip"
+            self.caption = "\(placeholderTitle)\n\nClash Royale highlights, cut on-device with CRCut.\n\n#clashroyale #cr #mobilegaming"
+        }
     }
+}
+
+extension QueueItem: Hashable {
+    static func == (lhs: QueueItem, rhs: QueueItem) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
