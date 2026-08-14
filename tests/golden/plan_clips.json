@@ -1,0 +1,178 @@
+{
+  "events": {
+    "fake_cr.mp4": [
+      7.6,
+      14.6,
+      22.6
+    ]
+  },
+  "fps": 30,
+  "groups": [
+    {
+      "hashtags": [
+        "#клешроаль",
+        "#клеш",
+        "#эдит",
+        "#clashroyale",
+        "#рек",
+        "#fyp"
+      ],
+      "music": null,
+      "name": "fake_cr_01",
+      "segments": [
+        {
+          "adlib": "",
+          "caption": "ЛАСТ ХИТ РЕШИЛ ВСЁ",
+          "end": 15.0,
+          "kind": "hook",
+          "narrate": true,
+          "peak": 0.0,
+          "score": 29.714,
+          "speed": 0.7,
+          "src": 0,
+          "start": 14.2,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 6.4,
+          "kind": "lead",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.292,
+          "speed": 1.25,
+          "src": 0,
+          "start": 3.78,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "СМОТРИ ДО КОНЦА",
+          "end": 8.1,
+          "kind": "hit",
+          "narrate": true,
+          "peak": 7.6,
+          "score": 29.292,
+          "speed": 0.55,
+          "src": 0,
+          "start": 6.4,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "Ох ты ж!",
+          "caption": "",
+          "end": 8.998,
+          "kind": "tail",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.292,
+          "speed": 1.0,
+          "src": 0,
+          "start": 8.1,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 13.4,
+          "kind": "lead",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.714,
+          "speed": 1.25,
+          "src": 0,
+          "start": 11.1,
+          "trans_in": 0.299,
+          "trans_kind": "smoothright"
+        },
+        {
+          "adlib": "",
+          "caption": "ЭТО БЫЛО БОЛЬНО",
+          "end": 15.1,
+          "kind": "hit",
+          "narrate": false,
+          "peak": 14.6,
+          "score": 29.714,
+          "speed": 0.55,
+          "src": 0,
+          "start": 13.4,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 15.998,
+          "kind": "tail",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.714,
+          "speed": 1.0,
+          "src": 0,
+          "start": 15.1,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 21.4,
+          "kind": "lead",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.53,
+          "speed": 1.25,
+          "src": 0,
+          "start": 18.78,
+          "trans_in": 0.299,
+          "trans_kind": "dissolve"
+        },
+        {
+          "adlib": "",
+          "caption": "НЕ МОРГАЙ",
+          "end": 23.1,
+          "kind": "hit",
+          "narrate": true,
+          "peak": 22.6,
+          "score": 29.53,
+          "speed": 0.55,
+          "src": 0,
+          "start": 21.4,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 23.998,
+          "kind": "tail",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.53,
+          "speed": 1.0,
+          "src": 0,
+          "start": 23.1,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        }
+      ],
+      "title": "ЛАСТ ХИТ РЕШИЛ ВСЁ ⚡"
+    }
+  ],
+  "height": 1920,
+  "lang": "ru",
+  "mode": "clips",
+  "music": null,
+  "sources": [
+    "/Users/admin/Desktop/afograf-tiktok/tests/fixtures/out/fake_cr.mp4"
+  ],
+  "version": 1,
+  "voice": null,
+  "voice_style": "grandpa",
+  "width": 1080
+}

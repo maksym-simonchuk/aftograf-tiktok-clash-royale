@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"ps aux | grep -E \\\"swift-test|swiftpm-testing-helper\\\" | grep -v grep; echo \\\"---lock---\\\"; ls -la /Users/admin/Desktop/afograf-tiktok/ios/Packages/RenderKit/.build/*.lock 2>&1\",\"descripti...",
+  "error": "Exit code 1\nadmin            99865   0.0  0.2 439189600  38928   ??  S    11:55PM   0:03.12 /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/libexec/swift/pm/swiftpm-testing-helper --test-bundle-path /Users/admin/Desktop/afograf-tiktok/ios/Packages/RenderKit/.build/arm64-apple-macosx/debug/RenderKitPackageTests.xctest/Contents/MacOS/RenderKitPackageTests --xunit-output /private/tmp/claude-503/-Users-admin-Desktop-afograf-tiktok/4044a5c9-8392-4d32-b4d0-8454952414...",
+  "timestamp": "2026-08-13T20:59:55.815Z",
+  "retry_count": 1
+}

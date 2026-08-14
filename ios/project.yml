@@ -1,0 +1,81 @@
+name: CRCut
+
+options:
+  bundleIdPrefix: local
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+
+packages:
+  DetectKit: # also vends the MediaKit product, referenced below
+    path: Packages/DetectKit
+  PlanKit:
+    path: Packages/PlanKit
+  RenderKit:
+    path: Packages/RenderKit
+  VoiceKit:
+    path: Packages/VoiceKit
+
+targets:
+  CRCut:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: CRCut
+        excludes:
+          - Info.plist
+    resources:
+      - path: CRCut/Resources
+    info:
+      path: CRCut/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: local.crcut
+        PRODUCT_NAME: CRCut
+        GENERATE_INFOPLIST_FILE: false
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_PREVIEWS: true
+    dependencies:
+      - package: DetectKit
+        product: DetectKit
+      - package: DetectKit
+        product: MediaKit
+      - package: PlanKit
+      - package: RenderKit
+      - package: VoiceKit
+
+  # GoldenTests:
+  #   type: bundle.unit-test
+  #   platform: iOS
+  #   deploymentTarget: "17.0"
+  #   sources:
+  #     - path: Tests/GoldenTests
+  #   dependencies:
+  #     - target: CRCut
+  #     - package: DetectKit
+  #     - package: PlanKit
+
+schemes:
+  CRCut:
+    build:
+      targets:
+        CRCut: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+    # test:
+    #   config: Debug
+    #   targets:
+    #     - GoldenTests

@@ -1,0 +1,348 @@
+{
+  "events": {
+    "fake_cr.mp4": [
+      7.6,
+      14.6,
+      22.6
+    ]
+  },
+  "fps": 30,
+  "groups": [
+    {
+      "hashtags": [
+        "#клешроаль",
+        "#клеш",
+        "#эдит",
+        "#clashroyale",
+        "#рек",
+        "#fyp"
+      ],
+      "music": null,
+      "name": "montage_v1",
+      "segments": [
+        {
+          "adlib": "",
+          "caption": "ДОП. ВРЕМЯ РЕШАЕТ",
+          "end": 23.0,
+          "kind": "hook",
+          "narrate": true,
+          "peak": 0.0,
+          "score": 30.115,
+          "speed": 0.7,
+          "src": 0,
+          "start": 22.2,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 6.4,
+          "kind": "lead",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.502,
+          "speed": 1.35,
+          "src": 0,
+          "start": 3.1,
+          "trans_in": 0.3,
+          "trans_kind": "dissolve"
+        },
+        {
+          "adlib": "",
+          "caption": "СМОТРИ ДО КОНЦА",
+          "end": 8.1,
+          "kind": "hit",
+          "narrate": true,
+          "peak": 7.6,
+          "score": 29.502,
+          "speed": 0.55,
+          "src": 0,
+          "start": 6.4,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "Ох ты ж!",
+          "caption": "",
+          "end": 9.6,
+          "kind": "tail",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.502,
+          "speed": 1.0,
+          "src": 0,
+          "start": 8.1,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 21.4,
+          "kind": "lead",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 30.115,
+          "speed": 1.35,
+          "src": 0,
+          "start": 18.1,
+          "trans_in": 0.3,
+          "trans_kind": "smoothright"
+        },
+        {
+          "adlib": "",
+          "caption": "ЭТО БЫЛО БОЛЬНО",
+          "end": 23.1,
+          "kind": "hit",
+          "narrate": false,
+          "peak": 22.6,
+          "score": 30.115,
+          "speed": 0.55,
+          "src": 0,
+          "start": 21.4,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 23.45,
+          "kind": "tail",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 30.115,
+          "speed": 1.0,
+          "src": 0,
+          "start": 23.1,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        }
+      ],
+      "title": "ДОП. ВРЕМЯ РЕШАЕТ 👑"
+    },
+    {
+      "hashtags": [
+        "#клешроаль",
+        "#клеш",
+        "#эдит",
+        "#clashroyale",
+        "#рек",
+        "#fyp"
+      ],
+      "music": null,
+      "name": "montage_v2",
+      "segments": [
+        {
+          "adlib": "",
+          "caption": "ОН РЕАЛЬНО ЭТОГО НЕ ЖДАЛ",
+          "end": 8.0,
+          "kind": "hook",
+          "narrate": true,
+          "peak": 0.0,
+          "score": 29.502,
+          "speed": 0.7,
+          "src": 0,
+          "start": 7.2,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 6.4,
+          "kind": "lead",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.502,
+          "speed": 1.35,
+          "src": 0,
+          "start": 3.1,
+          "trans_in": 0.3,
+          "trans_kind": "circleopen"
+        },
+        {
+          "adlib": "",
+          "caption": "НЕ МОРГАЙ",
+          "end": 8.1,
+          "kind": "hit",
+          "narrate": true,
+          "peak": 7.6,
+          "score": 29.502,
+          "speed": 0.55,
+          "src": 0,
+          "start": 6.4,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "Ай-ай-ай...",
+          "caption": "",
+          "end": 9.6,
+          "kind": "tail",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.502,
+          "speed": 1.0,
+          "src": 0,
+          "start": 8.1,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 18.573,
+          "kind": "lead",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 30.115,
+          "speed": 1.35,
+          "src": 0,
+          "start": 18.1,
+          "trans_in": 0.3,
+          "trans_kind": "fadegrays"
+        }
+      ],
+      "title": "ОН РЕАЛЬНО ЭТОГО НЕ ЖДАЛ 🔥"
+    },
+    {
+      "hashtags": [
+        "#клешроаль",
+        "#клеш",
+        "#эдит",
+        "#clashroyale",
+        "#рек",
+        "#fyp"
+      ],
+      "music": null,
+      "name": "montage_v3",
+      "segments": [
+        {
+          "adlib": "",
+          "caption": "ОН РЕАЛЬНО ЭТОГО НЕ ЖДАЛ",
+          "end": 15.0,
+          "kind": "hook",
+          "narrate": true,
+          "peak": 0.0,
+          "score": 29.457,
+          "speed": 0.7,
+          "src": 0,
+          "start": 14.2,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 6.4,
+          "kind": "lead",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.502,
+          "speed": 1.35,
+          "src": 0,
+          "start": 3.1,
+          "trans_in": 0.3,
+          "trans_kind": "smoothup"
+        },
+        {
+          "adlib": "",
+          "caption": "ОН В ШОКЕ",
+          "end": 8.1,
+          "kind": "hit",
+          "narrate": true,
+          "peak": 7.6,
+          "score": 29.502,
+          "speed": 0.55,
+          "src": 0,
+          "start": 6.4,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "Ну ты даёшь!",
+          "caption": "",
+          "end": 9.6,
+          "kind": "tail",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.502,
+          "speed": 1.0,
+          "src": 0,
+          "start": 8.1,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 13.4,
+          "kind": "lead",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.457,
+          "speed": 1.35,
+          "src": 0,
+          "start": 10.1,
+          "trans_in": 0.3,
+          "trans_kind": "smoothleft"
+        },
+        {
+          "adlib": "",
+          "caption": "СЕЙЧАС БУДЕТ",
+          "end": 15.1,
+          "kind": "hit",
+          "narrate": false,
+          "peak": 14.6,
+          "score": 29.457,
+          "speed": 0.55,
+          "src": 0,
+          "start": 13.4,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 16.6,
+          "kind": "tail",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 29.457,
+          "speed": 1.0,
+          "src": 0,
+          "start": 15.1,
+          "trans_in": 0.0,
+          "trans_kind": ""
+        },
+        {
+          "adlib": "",
+          "caption": "",
+          "end": 21.4,
+          "kind": "lead",
+          "narrate": false,
+          "peak": 0.0,
+          "score": 30.115,
+          "speed": 1.35,
+          "src": 0,
+          "start": 18.1,
+          "trans_in": 0.3,
+          "trans_kind": "smoothup"
+        }
+      ],
+      "title": "ОН РЕАЛЬНО ЭТОГО НЕ ЖДАЛ 🔥"
+    }
+  ],
+  "height": 1920,
+  "lang": "ru",
+  "mode": "montage",
+  "music": null,
+  "sources": [
+    "/Users/admin/Desktop/afograf-tiktok/tests/fixtures/out/fake_cr.mp4"
+  ],
+  "version": 1,
+  "voice": null,
+  "voice_style": "grandpa",
+  "width": 1080
+}

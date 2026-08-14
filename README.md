@@ -390,3 +390,31 @@ uv run python tests/fixtures/make_fake_cr.py      # пересобрать фи�
 
 Стадии 0-4: детект → план → рендер → переходы, сабы, зумы, стикеры, SFX,
 варианты, музыка и озвучка. План: `.omc/plans/2026-08-13-cr-tiktok-autoeditor.md`
+
+## iOS-приложение
+
+Нативный порт этого же пайплайна на устройство — без сервера, без App Store,
+сборка через Xcode. Живёт в `ios/`, план: `.omc/plans/2026-08-13-ios-crcut-app.md`.
+
+```
+ios/
+  Makefile           make install / make test
+  project.yml        XcodeGen-спека (bundle id local.crcut, iOS 17.0)
+  CRCut/             SwiftUI-приложение
+  Packages/          4 SPM-пакета
+    DetectKit          детект хайлайтов (AVFoundation + vDSP) + продукт MediaKit
+    PlanKit            чистый Swift-порт plan.py
+    RenderKit          композиция/рендер: переходы, зумы, капшены, энкод
+    VoiceKit           edge-tts клиент + AVSpeech-фолбэк
+```
+
+Нужны **Xcode** (не только Command Line Tools) и **XcodeGen** (`brew install xcodegen`).
+
+```bash
+cd ios
+make install   # xcodegen generate + xcodebuild build + devicectl install на подключённый iPhone
+make test      # swift test по всем Packages/*
+```
+
+Свободный Apple ID подписывает на 7 дней — `make install` заново и пересобирает,
+и переподписывает, одной командой. Подробности — `ios/README.md`.
